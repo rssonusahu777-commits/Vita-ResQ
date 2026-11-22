@@ -15,3 +15,4 @@ abstract class PlatformLimitations {
       'To guarantee you never miss nearby civilian emergency alerts, allow unrestricted '
       'background battery execution in your device settings.';
 }
+

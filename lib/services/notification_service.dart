@@ -264,3 +264,4 @@ class NotificationService {
     await _inAppAlertController.close();
   }
 }
+
