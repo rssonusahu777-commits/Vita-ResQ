@@ -1,14 +1,17 @@
 // lib/providers/providers.dart
 //
-// Vindara — Riverpod Providers (Phase 3)
+// Vindara — Riverpod Providers (Phase 4)
 // Package: com.vindara.app
 //
 // Design rules followed:
 //   Rule #1 — Real reachability stream exposed.
 //   Rule #3 — Firestore emergency service with atomic claims.
+//   Rule #4 — Deep link navigation passes only emergencyId (source of truth is Firestore).
+//   Rule #5 — FCM lifecycle handling for foreground, background, and cold start.
 //   Rule #6 — Every provider registers ref.onDispose to close streams/boxes.
 //              Single-lifecycle listeners without duplication.
 //   Rule #8 — Offline sync queue auto-drains when online.
+//   Rule #9 — Minimal push payloads without sensitive PII.
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -20,6 +23,7 @@ import '../services/connectivity_service.dart';
 import '../services/firestore_emergency_service.dart';
 import '../services/local_emergency_store.dart';
 import '../services/location_service.dart';
+import '../services/notification_service.dart';
 import '../services/sync_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -167,10 +171,85 @@ class CurrentUserProfileNotifier extends AsyncNotifier<UserProfile?> {
       state = AsyncData(updated);
     }
   }
+
+  Future<void> updateFcmToken(String token) async {
+    final current = state.asData?.value;
+    if (current != null && current.fcmToken != token) {
+      final updated = current.copyWith(fcmToken: token);
+      await save(updated);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
-// 9. Emergency streams (Local & Remote)
+// 9. NotificationService & Deep Linking (Phase 4 — Rules #4, #5, #6, #9)
+// ---------------------------------------------------------------------------
+
+/// Manages cold-start pending deep links (e.g. from terminated app state).
+/// Consumed once upon router ready to eliminate navigation race conditions.
+final pendingDeepLinkProvider =
+    StateNotifierProvider<PendingDeepLinkNotifier, String?>((ref) {
+  return PendingDeepLinkNotifier();
+});
+
+class PendingDeepLinkNotifier extends StateNotifier<String?> {
+  PendingDeepLinkNotifier([super.initial]);
+
+  void setPending(String? target) {
+    state = target;
+  }
+
+  /// Consumes and clears the pending deep-link target so it isn't triggered twice.
+  String? consume() {
+    final target = state;
+    state = null;
+    return target;
+  }
+}
+
+/// Single-lifecycle NotificationService provider.
+final notificationServiceProvider =
+    FutureProvider<NotificationService>((ref) async {
+  final service = NotificationService();
+  final coldStartTarget = await service.init();
+
+  if (coldStartTarget != null && coldStartTarget.isNotEmpty) {
+    ref.read(pendingDeepLinkProvider.notifier).setPending('/emergency/$coldStartTarget');
+  }
+
+  // Update user profile with device FCM token if available
+  final token = service.fcmToken;
+  if (token != null && token.isNotEmpty) {
+    ref.read(currentUserProfileProvider.notifier).updateFcmToken(token);
+  }
+
+  // Rule #6: Clean cancellation of all FCM listeners upon disposal
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+/// Stream of deep-link route navigation paths emitted when a notification is tapped.
+final deepLinkStreamProvider = StreamProvider<String>((ref) {
+  final serviceAsync = ref.watch(notificationServiceProvider);
+  return serviceAsync.when(
+    data: (service) => service.deepLinkStream,
+    loading: () => const Stream.empty(),
+    error: (e, _) => Stream.error(e),
+  );
+});
+
+/// Stream of in-app alert banners arriving while the app is in foreground.
+final inAppAlertStreamProvider = StreamProvider<InAppAlertEvent>((ref) {
+  final serviceAsync = ref.watch(notificationServiceProvider);
+  return serviceAsync.when(
+    data: (service) => service.inAppAlertStream,
+    loading: () => const Stream.empty(),
+    error: (e, _) => Stream.error(e),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 10. Emergency streams (Local & Remote)
 // ---------------------------------------------------------------------------
 
 final emergencyStreamProvider =

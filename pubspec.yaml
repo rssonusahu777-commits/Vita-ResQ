@@ -2,7 +2,7 @@ name: vindara
 description: >
   Vindara — Community Emergency Response Platform.
   Package identity: com.vindara.app.
-version: 0.3.0+1
+version: 0.4.0+1
 publish_to: none
 
 environment:
@@ -36,8 +36,9 @@ dependencies:
   connectivity_plus: ^6.0.3
   http: ^1.2.2
 
-  # --- Push notifications (Phase 4) ---
-  # firebase_messaging: ^15.0.4
+  # --- Push notifications & Local Heads-up (Phase 4) ---
+  firebase_messaging: ^15.0.4
+  flutter_local_notifications: ^17.2.2
 
   # --- Sensor-based crash detection (Phase 6) ---
   # sensors_plus: ^4.1.1

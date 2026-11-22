@@ -1,23 +1,12 @@
 // lib/models/user_profile.dart
 //
-// SafeReach — UserProfile Domain Model
-// Package: com.example.safereach
+// Vindara — UserProfile Domain Model
+// Package: com.vindara.app
 //
-// Phase 1: Domain model only. No Firebase, no UI, no network calls.
+// Design notes:
+//   - Includes fcmToken for device push notification addressing.
+//   - Responder status and reputation points are authoritative in Firestore.
 
-// ---------------------------------------------------------------------------
-// UserProfile
-// ---------------------------------------------------------------------------
-
-/// Represents a SafeReach user — either a regular civilian or a verified
-/// community responder.
-///
-/// Responder status ([isVerifiedResponder]) is set server-side after vetting.
-/// Clients should treat this field as read-only and never self-assign it.
-///
-/// The reputation system ([reputationPoints], [badges]) is computed server-side;
-/// [responseHistoryCount] and [successfulAssistanceCount] are stored here for
-/// offline display only and must be re-validated against Firestore on sync.
 class UserProfile {
   /// Firebase Auth UID. Immutable after account creation.
   final String uid;
@@ -33,22 +22,20 @@ class UserProfile {
   /// Only meaningful when [isVerifiedResponder] is `true`.
   final bool isAvailable;
 
-  /// Total number of emergencies this responder has been assigned to
-  /// (regardless of outcome). Read-only on the client; server-managed.
+  /// Total number of emergencies this responder has been assigned to.
   final int responseHistoryCount;
 
   /// Number of emergencies this responder has resolved with a positive outcome.
-  /// Read-only on the client; server-managed.
   final int successfulAssistanceCount;
 
-  /// Gamified reputation score. Higher = more trusted in the community.
-  /// Read-only on the client; server-managed.
+  /// Gamified reputation score.
   final int reputationPoints;
 
   /// List of badge identifiers earned by this user.
-  /// Example badge IDs: `'first_responder'`, `'ten_assists'`, `'night_hero'`.
-  /// Badge metadata (label, icon) is resolved separately via a badge registry.
   final List<String> badges;
+
+  /// Device Firebase Cloud Messaging (FCM) registration token for alerts.
+  final String? fcmToken;
 
   const UserProfile({
     required this.uid,
@@ -59,17 +46,15 @@ class UserProfile {
     this.successfulAssistanceCount = 0,
     this.reputationPoints = 0,
     this.badges = const [],
+    this.fcmToken,
   });
 
   // -------------------------------------------------------------------------
   // Derived / Computed properties
   // -------------------------------------------------------------------------
 
-  /// Convenience check: user is a responder AND currently accepting jobs.
   bool get isActiveResponder => isVerifiedResponder && isAvailable;
 
-  /// Assistance success rate as a fraction [0.0, 1.0].
-  /// Returns 0.0 if [responseHistoryCount] is zero (no division by zero).
   double get successRate => responseHistoryCount == 0
       ? 0.0
       : successfulAssistanceCount / responseHistoryCount;
@@ -78,7 +63,6 @@ class UserProfile {
   // copyWith
   // -------------------------------------------------------------------------
 
-  /// Returns a new [UserProfile] with the specified fields replaced.
   UserProfile copyWith({
     String? uid,
     String? displayName,
@@ -88,6 +72,8 @@ class UserProfile {
     int? successfulAssistanceCount,
     int? reputationPoints,
     List<String>? badges,
+    String? fcmToken,
+    bool clearFcmToken = false,
   }) {
     return UserProfile(
       uid: uid ?? this.uid,
@@ -99,6 +85,7 @@ class UserProfile {
           successfulAssistanceCount ?? this.successfulAssistanceCount,
       reputationPoints: reputationPoints ?? this.reputationPoints,
       badges: badges ?? List.unmodifiable(this.badges),
+      fcmToken: clearFcmToken ? null : (fcmToken ?? this.fcmToken),
     );
   }
 
@@ -106,7 +93,6 @@ class UserProfile {
   // Serialization
   // -------------------------------------------------------------------------
 
-  /// Converts this [UserProfile] to a JSON-serialisable [Map].
   Map<String, dynamic> toJson() {
     return {
       'uid': uid,
@@ -117,20 +103,18 @@ class UserProfile {
       'successfulAssistanceCount': successfulAssistanceCount,
       'reputationPoints': reputationPoints,
       'badges': List<String>.from(badges),
+      'fcmToken': fcmToken,
     };
   }
 
-  /// Creates a [UserProfile] from a JSON map (Firestore document or local DB).
-  ///
-  /// Treats missing optional fields gracefully with sensible defaults so that
-  /// older document versions (before a field was added) deserialise correctly.
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
       uid: json['uid'] as String,
       displayName: json['displayName'] as String,
       isVerifiedResponder: (json['isVerifiedResponder'] as bool?) ?? false,
       isAvailable: (json['isAvailable'] as bool?) ?? false,
-      responseHistoryCount: (json['responseHistoryCount'] as num?)?.toInt() ?? 0,
+      responseHistoryCount:
+          (json['responseHistoryCount'] as num?)?.toInt() ?? 0,
       successfulAssistanceCount:
           (json['successfulAssistanceCount'] as num?)?.toInt() ?? 0,
       reputationPoints: (json['reputationPoints'] as num?)?.toInt() ?? 0,
@@ -138,6 +122,7 @@ class UserProfile {
               ?.map((e) => e as String)
               .toList() ??
           const [],
+      fcmToken: json['fcmToken'] as String?,
     );
   }
 
@@ -150,10 +135,11 @@ class UserProfile {
       identical(this, other) ||
       other is UserProfile &&
           runtimeType == other.runtimeType &&
-          uid == other.uid;
+          uid == other.uid &&
+          fcmToken == other.fcmToken;
 
   @override
-  int get hashCode => uid.hashCode;
+  int get hashCode => Object.hash(uid, fcmToken);
 
   @override
   String toString() {
@@ -163,8 +149,8 @@ class UserProfile {
         'isVerifiedResponder: $isVerifiedResponder, '
         'isAvailable: $isAvailable, '
         'reputationPoints: $reputationPoints, '
-        'badges: $badges'
+        'badges: $badges, '
+        'fcmToken: $fcmToken'
         ')';
   }
 }
-

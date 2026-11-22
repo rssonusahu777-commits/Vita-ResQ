@@ -150,3 +150,4 @@ class ConnectivityService {
     await _isOnlineController.close();
   }
 }
+

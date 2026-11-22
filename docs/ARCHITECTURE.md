@@ -2,7 +2,7 @@
 
 > **Package:** `com.vindara.app`  
 > **Platform:** Flutter (iOS & Android)  
-> **Phase:** 3 — Rebrand, Real Reachability Probe, Cloud Firestore Atomic Claims & Idempotent Sync
+> **Phase:** 4 — Bulletproof FCM Push Lifecycle, Deep-Link Routing, and Privacy-Minimal Cloud Function
 
 ---
 
@@ -12,7 +12,7 @@
 2. [Folder Structure](#2-folder-structure)
 3. [The Central `Emergency` Entity & State Machine](#3-the-central-emergency-entity--state-machine)
 4. [The 10 Bug-Prevention Rules](#4-the-10-bug-prevention-rules)
-5. [Data Flow](#5-data-flow)
+5. [Data Flow & Push Notification Architecture](#5-data-flow--push-notification-architecture)
 6. [Domain Models Summary](#6-domain-models-summary)
 7. [Future Phases Roadmap](#7-future-phases-roadmap)
 
@@ -34,7 +34,13 @@ Vindara is a **Community Emergency Response Platform** that enables civilians an
 ## 2. Folder Structure
 
 ```
+functions/
+├── package.json
+└── index.js          # Firestore trigger for privacy-minimal push alert dispatch
+
 lib/
+├── constants/
+│   └── platform_limitations.dart
 ├── models/           # Pure Dart domain models (no Flutter deps)
 │   ├── emergency.dart
 │   └── user_profile.dart
@@ -43,7 +49,8 @@ lib/
 │   ├── location_service.dart
 │   ├── connectivity_service.dart
 │   ├── firestore_emergency_service.dart
-│   └── sync_service.dart
+│   ├── sync_service.dart
+│   └── notification_service.dart
 ├── repositories/     # Offline-first data access layer (local + remote)
 │   ├── emergency_repository.dart
 │   └── user_profile_repository.dart
@@ -56,19 +63,6 @@ lib/
 
 docs/
 └── ARCHITECTURE.md   ← this file
-
-test/
-├── models/
-│   ├── emergency_test.dart
-│   └── user_profile_test.dart
-├── services/
-│   ├── local_emergency_store_test.dart
-│   ├── location_service_test.dart
-│   ├── connectivity_service_test.dart
-│   ├── firestore_emergency_service_test.dart
-│   └── sync_service_test.dart
-└── repositories/
-    └── emergency_repository_test.dart
 ```
 
 ---
@@ -126,151 +120,90 @@ stateDiagram-v2
 | `resolved` | *(none — terminal)* |
 | `cancelled` | *(none — terminal)* |
 
-Any call to `canTransitionTo()` for an unlisted transition returns `false`. Callers **must** check this before writing to any database.
-
 ---
 
 ## 4. The 10 Bug-Prevention Rules
 
 ### Rule 1 — Real Reachability vs. No-Wi-Fi
-
-**Problem:** A device may have Wi-Fi connected but no actual internet route. `connectivity_plus` only reports the *link layer* state, not true end-to-end reachability.
-
-**Rule:** Never trust `ConnectivityResult.wifi` or `ConnectivityResult.mobile` alone. Always attempt a lightweight probe (HTTP HEAD or GET with a 3-second timeout to a dedicated endpoint like Google generate_204 or Cloudflare trace) before marking the app as "online". The `ConnectivityService` exposes `isOnline` stream and `CommunicationMode` reflects this verified state.
-
----
+**Rule:** Never trust `ConnectivityResult.wifi` or `ConnectivityResult.mobile` alone. Always attempt a lightweight probe (`HEAD`/`GET` with 3-second timeout) before marking the app as online. `ConnectivityService` exposes verified `isOnline` stream.
 
 ### Rule 2 — Offline-Independent GPS
-
-**Problem:** Many location libraries cache coordinates only while map tiles are loaded, or fail when the Maps SDK is unavailable.
-
-**Rule:** GPS coordinates (`latitude`, `longitude`, `accuracyMeters`) are captured using the `geolocator` package directly against the platform location API — **no map SDK, no tile server, no routing dependency**. Coordinates are stored as plain `double` fields and are valid regardless of network state. The map UI renders coordinates onto locally cached tiles; losing tiles never loses the fix.
-
----
+**Rule:** GPS coordinates (`latitude`, `longitude`, `accuracyMeters`) are captured using the `geolocator` package directly against the platform location API — **no map SDK, no tile server, no routing dependency**. Cached coordinates provide an immediate fallback.
 
 ### Rule 3 — Atomic Responder Claims
-
-**Problem:** Two responders tapping "Accept" simultaneously can both believe they are primary responder, causing split responses and coordination failure.
-
-**Rule:** Every responder claim is executed as a **Firestore transaction** (`FirestoreEmergencyService.claimEmergency`):
-- If `status` is `created` or `alerting` and `primaryResponderId == null`: set `primaryResponderId = responderId`, `status = accepted`, increment `version`. Return `ClaimPrimarySuccess`.
-- Else if `primaryResponderId != null && primaryResponderId != responderId && standbyResponderId == null`: set `standbyResponderId = responderId`, increment `version`. Return `ClaimStandbySuccess`.
-- Else: return `AlreadyClaimedResult`.
-
-If the primary responder drops/releases their role, a transaction automatically promotes `standbyResponderId` to `primaryResponderId` (or resets to `alerting` if none exists).
-
----
+**Rule:** Responder claims are executed as a **Firestore transaction** (`FirestoreEmergencyService.claimEmergency`):
+- First claim assigns `primaryResponderId`, sets `status = accepted`, increments `version`.
+- Second concurrent claim assigns `standbyResponderId`, increments `version`.
+- Additional claims receive `AlreadyClaimedResult`.
+- Releasing primary role automatically promotes standby to primary.
 
 ### Rule 4 — Firestore / Local DB as Source of Truth (Not Push Payloads)
+**Rule:** Push notifications carry **only a notification type and the `emergencyId`** (e.g. `{ "emergencyId": "EMG-2026-9F4A2C1B", "type": "medical" }`). On notification tap, the app only passes `/emergency/<emergencyId>` into the router. The app fetches authoritative data from Firestore/local DB; push payload data is never used to populate status or victim details.
 
-**Problem:** FCM push payloads arrive out of order, may be dropped, and are truncated on some Android OEMs. Building business logic on top of push payload data leads to stale or missing state.
-
-**Rule:** Push notifications carry **only a notification type and the `Emergency` ID** (e.g., `{ "type": "emergency_updated", "emergencyId": "EMG-2026-9F4A2C1B" }`). On receipt, the app always fetches the full record from Firestore (online) or local DB (offline). The push payload is never the authoritative source of emergency state.
-
----
-
-### Rule 5 — FCM Foreground / Background / Terminated Handling + OS Force-Stop
-
-**Problem:** FCM delivers messages differently depending on app lifecycle state. Android "force stop" (battery saver, OEM optimisations) can prevent the app from ever receiving a push.
-
+### Rule 5 — FCM Foreground / Background / Terminated Handling + OS Force-Stop Limitations
 **Rule:**
-- **Foreground:** `FirebaseMessaging.onMessage` stream — handled in-app.
-- **Background (not terminated):** `FirebaseMessaging.onBackgroundMessage` isolate — must be a top-level function, no Flutter engine access.
-- **Terminated:** System tray notification tap → `getInitialMessage()` on cold start.
-- **Force-stopped / Doze:** Push may never arrive. The app **must** show a persistent "you may miss alerts" banner when background delivery cannot be verified, and must never promise real-time delivery to users on affected devices.
-
----
+- **Foreground (`onMessage`)**: Emits `InAppAlertEvent` and triggers a local heads-up notification without navigating away while the user is actively working.
+- **Background Tap (`onMessageOpenedApp`)**: Emits `/emergency/<id>` to `deepLinkStream`.
+- **Terminated Cold-Start (`getInitialMessage`)**: Captured during `NotificationService.init()`, stored in `pendingDeepLinkProvider` to eliminate cold-start router race conditions.
+- **Background isolate handler**: Defined as a top-level `@pragma('vm:entry-point')` function.
+- **OS Force-Stop / Battery Optimization Notice**: If a user explicitly force-stops the app in Android/iOS settings or enables aggressive power-saver modes, OS platform restrictions block background FCM delivery until the app is reopened. Vindara documents this honestly in `PlatformLimitations.osForceStopLimitationNotice`.
 
 ### Rule 6 — Single-Lifecycle Listeners Without Duplication
-
-**Problem:** Riverpod providers, `StreamSubscription`s, and `ChangeNotifier`s created in `initState` without disposal cause duplicate event handling and memory leaks, especially during hot reload.
-
 **Rule:**
 - Every `StreamSubscription` is stored in a field and cancelled in `dispose()`.
-- Riverpod `ref.listen` / `ref.watch` is used instead of manual stream subscriptions wherever possible.
-- Global listeners (connectivity, sync service, remote watch) register lifecycle disposers via `ref.onDispose` and never re-register on widget rebuild.
-
----
+- Providers (`notificationServiceProvider`, `syncServiceProvider`, `connectivityServiceProvider`) register clean teardowns via `ref.onDispose`. Listeners are never duplicated on rebuilds or hot reload.
 
 ### Rule 7 — Collision-Resistant `EMG-2026-XXXXXXXX` IDs
-
-**Problem:** Sequential or timestamp-based IDs collide when multiple devices create emergencies offline simultaneously.
-
-**Rule:** Emergency IDs are always generated client-side by `Emergency.generateId()`:
-
-```dart
-static String generateId() {
-  final rng = Random.secure();
-  final bytes = List<int>.generate(4, (_) => rng.nextInt(256));
-  final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join().toUpperCase();
-  return 'EMG-2026-$hex';
-}
-```
-
-This yields 2³² ≈ 4.3 billion possible values per year prefix. IDs are identical whether created online or offline, so local records merge into Firestore without renaming.
-
----
+**Rule:** Emergency IDs are generated client-side by `Emergency.generateId()` using `Random.secure()` (4 random bytes = 8 hex chars). IDs are identical offline and online.
 
 ### Rule 8 — Offline Queue & Idempotent Sync
-
-**Problem:** Network writes that fail silently leave the local and remote DBs diverged. Retrying non-idempotent operations produces incorrect results.
-
 **Rule:**
-- Every mutation is written to `LocalEmergencyStore` first (status: `pending`).
-- When connectivity transitions to online, `SyncService` drains `getPendingSyncEmergencies()`, pushing each to Firestore via `upsertEmergency()`.
-- Remote writes use `SetOptions(merge: true)` with `version` comparison guard: older local state cannot overwrite a newer remote version.
-- On success, `markAsSynced(id)` is called; on terminal errors, `markAsFailed(id)`.
-
----
+- Mutations write to `LocalEmergencyStore` first (`pending`).
+- `SyncService` drains the queue when `isOnline` becomes true, pushing records via `upsertEmergency(emergency)` guarded by `version`.
 
 ### Rule 9 — Minimal Push Payloads Without Sensitive PII
-
-**Problem:** FCM payloads pass through Google infrastructure and are logged on-device. Embedding victim names, addresses, or medical details in push payloads is a privacy violation and an attack surface.
-
-**Rule:** FCM data payloads contain **only**:
+**Rule:** FCM data payloads sent by Cloud Functions contain **only**:
 ```json
-{ "type": "emergency_updated", "emergencyId": "EMG-2026-XXXXXXXX" }
+{ "emergencyId": "EMG-2026-XXXXXXXX", "type": "medical" }
 ```
-No names, no coordinates, no medical type, no phone numbers. The receiving app fetches sensitive data from Firestore over an authenticated, encrypted channel.
-
----
+No victim name, no phone number, no address, no coordinates. Sensitive details remain authenticated inside Firestore.
 
 ### Rule 10 — Honest "Possible Crash" Framing
-
-**Problem:** Accelerometer-based crash detection has false positives (dropping a phone, riding a rough road). Labelling these "CRASH DETECTED" panics users and erodes trust.
-
-**Rule:**
-- The `DetectionSource.possibleCrash` value is used for sensor-triggered events.
-- UI strings always say **"Possible Crash Detected — Are you OK?"** never "Crash Detected".
-- The user has a **30-second countdown** to dismiss the alert before an emergency is created.
-- In all alert text and notifications, prefer **"HELP"** over "SOS" to match the app's user-facing language standard.
+**Rule:** Sensor-triggered events use `DetectionSource.possibleCrash` and UI strings always state **"Possible Crash Detected — Are you OK?"** with a 30-second countdown. Never use "SOS" in user-facing UI; use **"HELP"**.
 
 ---
 
-## 5. Data Flow
+## 5. Data Flow & Push Notification Architecture
 
 ```
-[Device Sensors / User Input]
-        │
+[Victim Device]
+        │ (HELP pressed)
         ▼
   EmergencyRepository.create()
         │
-        ├──► Local DB (Hive: emergencies_box) ◄─── always first, synchronous
+        ├──► Local Hive DB (emergencies_box, syncStatus: pending)
         │
-        └──► Offline Sync Queue (syncStatus: pending)
-                    │
-            (SyncService: when isOnline confirmed via probe)
-                    │
-                    ▼
-       Firestore (emergencies/{id})
-                    │
-                    ▼
-          FCM → other devices (Phase 4)
-          (payload: type + emergencyId only)
-                    │
-                    ▼
-         Recipient fetches full Emergency
-         from Firestore or local replica
+        ▼ (when isOnline)
+  Firestore (emergencies/{emergencyId}, status: 'alerting')
+        │
+        ▼ (onDocumentCreated trigger)
+  Cloud Function (functions/index.js)
+        │
+        ├──► Query active verified responders (isAvailable: true, fcmToken != null)
+        │
+        ▼ (FCM High-Priority Multicast, payload: { emergencyId, type } ONLY)
+  FCM Gateway ────► [Nearby Responder Devices]
+                         │
+        ┌────────────────┼────────────────┐
+        ▼ (Foreground)   ▼ (Background)   ▼ (Terminated Cold-Start)
+    Heads-up alert    onMessageOpenedApp  getInitialMessage()
+    in-app banner     deepLinkStream      pendingDeepLinkProvider
+        │                │                │
+        └────────────────┴────────────────┴─► Route to /emergency/:id
+                                                  │
+                                                  ▼
+                                       Fetch authoritative record
+                                         from Firestore / local DB
 ```
 
 ---
@@ -282,7 +215,7 @@ No names, no coordinates, no medical type, no phone numbers. The receiving app f
 - Key methods: `generateId()`, `canTransitionTo()`, `copyWith()`, `toJson()`, `fromJson()`
 
 ### `UserProfile`
-- Fields: `uid`, `displayName`, `isVerifiedResponder`, `isAvailable`, `responseHistoryCount`, `successfulAssistanceCount`, `reputationPoints`, `badges`
+- Fields: `uid`, `displayName`, `isVerifiedResponder`, `isAvailable`, `responseHistoryCount`, `successfulAssistanceCount`, `reputationPoints`, `badges`, `fcmToken`
 - Key methods: `copyWith()`, `toJson()`, `fromJson()`
 
 ---
@@ -294,8 +227,8 @@ No names, no coordinates, no medical type, no phone numbers. The receiving app f
 | **1** ✅ | Skeleton, architecture rules, `Emergency` + `UserProfile` models |
 | **2** ✅ | Local Hive store, GPS location service, EmergencyRepository, Riverpod providers |
 | **3** ✅ | Vindara rebrand, real reachability probe, Cloud Firestore atomic claims, idempotent sync |
-| **4** | FCM push notifications, background isolate handler |
-| **5** | Home screen (HELP button), responder dashboard |
-| **6** | Crash detection (accelerometer), "Possible Crash" flow |
-| **7** | Reputation, badges, responder leaderboard |
-| **8** | Admin portal, analytics |
+| **4** ✅ | FCM push notification architecture, deep-linking, privacy-minimal Cloud Function |
+| **5** | Home screen (HELP button), responder dashboard, emergency live map UI |
+| **6** | Crash detection (accelerometer), "Possible Crash" flow with 30s countdown |
+| **7** | Nearby offline relay (BLE / Wi-Fi Direct mesh) |
+| **8** | Admin portal & responder verification |

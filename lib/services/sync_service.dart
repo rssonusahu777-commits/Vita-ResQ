@@ -77,3 +77,4 @@ class SyncService {
     await _connectivitySubscription?.cancel();
   }
 }
+
