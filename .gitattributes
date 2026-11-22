@@ -1,0 +1,22 @@
+# SafeReach — Git line-ending normalisation
+# Ensures consistent LF in the repo regardless of OS checkout settings.
+
+* text=auto eol=lf
+
+# Dart / Flutter source
+*.dart text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+
+# Keep binary files untouched
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.ttf  binary
+*.otf  binary
+*.woff binary
+*.woff2 binary
