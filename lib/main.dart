@@ -3,12 +3,30 @@
 // SafeReach — Application Entry Point
 // Package: com.example.safereach
 //
-// Phase 1: Minimal shell. No Firebase initialisation, no service wiring yet.
+// Phase 2: Hive initialisation + ProviderScope added.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
-void main() {
-  runApp(const SafeReachApp());
+Future<void> main() async {
+  // Required before any async plugin call.
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialise Hive using the Flutter path-provider integration so it stores
+  // data in the app's documents directory on both Android and iOS.
+  // All boxes are opened lazily by their respective services; we just
+  // initialise the root path here.
+  await Hive.initFlutter();
+
+  runApp(
+    // ProviderScope is the Riverpod dependency-injection container.
+    // It must wrap the entire widget tree exactly once (Rule #6 — single
+    // lifecycle, never duplicated inside widget subtrees).
+    const ProviderScope(
+      child: SafeReachApp(),
+    ),
+  );
 }
 
 class SafeReachApp extends StatelessWidget {
@@ -37,7 +55,7 @@ class SafeReachApp extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 /// Central route table for SafeReach.
-/// Phase 1: stubs only. Full implementations come in Phase 5+.
+/// Phase 2: stubs retained. Full implementations come in Phase 5+.
 class AppRoutes {
   AppRoutes._();
 
@@ -57,7 +75,7 @@ class AppRoutes {
 }
 
 // ---------------------------------------------------------------------------
-// Placeholder Screen (Phase 1 only — replaced in Phase 5)
+// Placeholder Screen (replaced in Phase 5)
 // ---------------------------------------------------------------------------
 
 class _PlaceholderScreen extends StatelessWidget {
@@ -98,4 +116,3 @@ class _PlaceholderScreen extends StatelessWidget {
     );
   }
 }
-
