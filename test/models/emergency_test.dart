@@ -4,7 +4,7 @@
 // Run with: flutter test test/models/emergency_test.dart
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:safereach/models/emergency.dart';
+import 'package:vindara/models/emergency.dart';
 
 void main() {
   // -------------------------------------------------------------------------

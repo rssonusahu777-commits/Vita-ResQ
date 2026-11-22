@@ -3,7 +3,7 @@
 // SafeReach — UserProfile model unit tests (Phase 1)
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:safereach/models/user_profile.dart';
+import 'package:vindara/models/user_profile.dart';
 
 void main() {
   group('UserProfile toJson / fromJson', () {

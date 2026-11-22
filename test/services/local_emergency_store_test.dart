@@ -8,8 +8,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import 'package:safereach/models/emergency.dart';
-import 'package:safereach/services/local_emergency_store.dart';
+import 'package:vindara/models/emergency.dart';
+import 'package:vindara/services/local_emergency_store.dart';
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -1,10 +1,11 @@
 // lib/main.dart
 //
-// SafeReach — Application Entry Point
-// Package: com.example.safereach
+// Vindara — Application Entry Point
+// Package: com.vindara.app
 //
-// Phase 2: Hive initialisation + ProviderScope added.
+// Phase 3: Firebase safe initialization wrapper + Hive + ProviderScope.
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -13,29 +14,42 @@ Future<void> main() async {
   // Required before any async plugin call.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialise Hive using the Flutter path-provider integration so it stores
-  // data in the app's documents directory on both Android and iOS.
-  // All boxes are opened lazily by their respective services; we just
-  // initialise the root path here.
+  // Initialize Hive using Flutter path integration.
   await Hive.initFlutter();
+
+  // Initialize Firebase with a safe fallback wrapper so offline mode,
+  // desktop testing, or environments without firebase_options.dart boot cleanly.
+  await _initFirebaseSafely();
 
   runApp(
     // ProviderScope is the Riverpod dependency-injection container.
-    // It must wrap the entire widget tree exactly once (Rule #6 — single
-    // lifecycle, never duplicated inside widget subtrees).
+    // Wrapped at root (Rule #6 — single lifecycle, never duplicated).
     const ProviderScope(
-      child: SafeReachApp(),
+      child: VindaraApp(),
     ),
   );
 }
 
-class SafeReachApp extends StatelessWidget {
-  const SafeReachApp({super.key});
+/// Safely initializes default Firebase app, capturing missing options or offline boot.
+Future<void> _initFirebaseSafely() async {
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
+  } catch (e) {
+    // Graceful fallback: Firebase services will operate in offline/mock mode or defer
+    // until cloud configuration is supplied.
+    debugPrint('Firebase not initialized or missing configuration: $e');
+  }
+}
+
+class VindaraApp extends StatelessWidget {
+  const VindaraApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SafeReach',
+      title: 'Vindara',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -54,8 +68,7 @@ class SafeReachApp extends StatelessWidget {
 // Route Registry
 // ---------------------------------------------------------------------------
 
-/// Central route table for SafeReach.
-/// Phase 2: stubs retained. Full implementations come in Phase 5+.
+/// Central route table for Vindara.
 class AppRoutes {
   AppRoutes._();
 
@@ -65,7 +78,7 @@ class AppRoutes {
   static const String userProfile = '/profile';
 
   static final Map<String, WidgetBuilder> routes = {
-    home: (_) => const _PlaceholderScreen(title: 'SafeReach Home'),
+    home: (_) => const _PlaceholderScreen(title: 'Vindara Home'),
     responderDashboard: (_) =>
         const _PlaceholderScreen(title: 'Responder Dashboard'),
     emergencyDetail: (_) =>

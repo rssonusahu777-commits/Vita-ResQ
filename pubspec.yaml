@@ -1,15 +1,15 @@
-name: safereach
+name: vindara
 description: >
-  SafeReach — Community Emergency Response Platform.
-  Placeholder package name: com.example.safereach (rename before release).
-version: 0.2.0+1
+  Vindara — Community Emergency Response Platform.
+  Package identity: com.vindara.app.
+version: 0.3.0+1
 publish_to: none
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
 
 # ---------------------------------------------------------------------------
-# Phase 1 — Pure Dart core (always active)
+# Dependencies
 # ---------------------------------------------------------------------------
 dependencies:
   flutter:
@@ -27,14 +27,17 @@ dependencies:
   # --- State Management (Phase 2) ---
   flutter_riverpod: ^2.5.1
 
-  # --- Firebase (Phase 3) ---
-  # firebase_core: ^3.3.0
-  # cloud_firestore: ^5.2.1
-  # firebase_auth: ^5.1.4
-  # firebase_messaging: ^15.0.4
+  # --- Firebase & Cloud Firestore (Phase 3) ---
+  firebase_core: ^3.3.0
+  cloud_firestore: ^5.2.1
+  firebase_auth: ^5.1.4
 
-  # --- Network reachability (Phase 3) ---
-  # connectivity_plus: ^6.0.3
+  # --- Network reachability & HTTP probe (Phase 3) ---
+  connectivity_plus: ^6.0.3
+  http: ^1.2.2
+
+  # --- Push notifications (Phase 4) ---
+  # firebase_messaging: ^15.0.4
 
   # --- Sensor-based crash detection (Phase 6) ---
   # sensors_plus: ^4.1.1
@@ -47,11 +50,6 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
   mocktail: ^1.0.4
-
-  # --- Code generation (enable when adding riverpod_annotation / hive_generator) ---
-  # build_runner: ^2.4.9
-  # riverpod_generator: ^2.4.0
-  # hive_generator: ^2.0.1
 
 flutter:
   uses-material-design: true

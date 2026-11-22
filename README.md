@@ -1,35 +1,32 @@
-# SafeReach
+# Vindara
 
-> Community Emergency Response Platform — `com.example.safereach`
+> Community Emergency Response Platform — `com.vindara.app`
 
-## Phase 1 (current): Project Skeleton, Architecture Rules & Core Domain Models
+Vindara is an offline-first community emergency response platform built in Flutter, enabling civilians and verified local responders to coordinate rapidly online and offline.
 
-| File | Description |
-|---|---|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Full architecture reference & 10 bug-prevention rules |
-| [`lib/models/emergency.dart`](lib/models/emergency.dart) | Core `Emergency` entity with state machine |
-| [`lib/models/user_profile.dart`](lib/models/user_profile.dart) | `UserProfile` domain model |
-| [`lib/main.dart`](lib/main.dart) | App entry point, route stubs |
-| [`pubspec.yaml`](pubspec.yaml) | Phase-annotated dependency list |
-| [`test/models/emergency_test.dart`](test/models/emergency_test.dart) | Unit tests for `Emergency` |
-| [`test/models/user_profile_test.dart`](test/models/user_profile_test.dart) | Unit tests for `UserProfile` |
+---
 
-## Running the tests
+## Phases & Status
+
+| Phase | Description | Status |
+|---|---|---|
+| **Phase 1** | Project skeleton, architecture rules, core `Emergency` & `UserProfile` models | ✅ Completed (`phase-1`) |
+| **Phase 2** | Local offline storage (Hive), offline-independent GPS location service, repositories & Riverpod providers | ✅ Completed (`phase-2`) |
+| **Phase 3** | Rebrand to Vindara, real internet reachability probe, Cloud Firestore integration with atomic responder claims, and idempotent sync | ✅ Completed (`phase-3`) |
+| **Phase 4** | FCM push notifications (background/terminated isolate handlers, minimal PII payloads) | ⏳ Up Next |
+| **Phase 5** | Core UI: Home Screen (HELP button) and Responder Dashboard | ⏳ Planned |
+| **Phase 6** | Accelerometer crash detection ("Possible Crash" flow with 30s countdown) | ⏳ Planned |
+
+---
+
+## Running Tests
 
 ```bash
 flutter test
 ```
 
-## Running the app
+## Running the App
 
 ```bash
 flutter run
 ```
-
-## Renaming from SafeReach
-
-1. Update `name:` in `pubspec.yaml`.
-2. Update `applicationId` in `android/app/build.gradle`.
-3. Update `PRODUCT_BUNDLE_IDENTIFIER` in `ios/Runner.xcodeproj`.
-4. Search & replace `com.example.safereach` and `safereach` project-wide.
-

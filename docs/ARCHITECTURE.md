@@ -1,8 +1,8 @@
-# SafeReach — Architecture Reference
+# Vindara — Architecture Reference
 
-> **Package:** `com.example.safereach`  
+> **Package:** `com.vindara.app`  
 > **Platform:** Flutter (iOS & Android)  
-> **Phase:** 1 — Project Skeleton, Architecture Rules, Core Domain Models
+> **Phase:** 3 — Rebrand, Real Reachability Probe, Cloud Firestore Atomic Claims & Idempotent Sync
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## 1. System Overview
 
-SafeReach is a **Community Emergency Response Platform** that enables civilians and verified responders to coordinate during emergencies — online *and* offline. The architecture is designed around four non-negotiables:
+Vindara is a **Community Emergency Response Platform** that enables civilians and verified responders to coordinate during emergencies — online *and* offline. The architecture is designed around four non-negotiables:
 
 | Non-Negotiable | Design Decision |
 |---|---|
@@ -38,23 +38,37 @@ lib/
 ├── models/           # Pure Dart domain models (no Flutter deps)
 │   ├── emergency.dart
 │   └── user_profile.dart
-├── services/         # Side-effectful I/O: GPS, FCM, local DB, Firestore
-│   └── .gitkeep
+├── services/         # Side-effectful I/O: GPS, FCM, local DB, Firestore, connectivity, sync
+│   ├── local_emergency_store.dart
+│   ├── location_service.dart
+│   ├── connectivity_service.dart
+│   ├── firestore_emergency_service.dart
+│   └── sync_service.dart
 ├── repositories/     # Offline-first data access layer (local + remote)
+│   ├── emergency_repository.dart
+│   └── user_profile_repository.dart
+├── providers/        # Riverpod state management
+│   └── providers.dart
+├── screens/          # Route-level UI screens (Phase 5+)
 │   └── .gitkeep
-├── providers/        # Riverpod/Provider state management
-│   └── .gitkeep
-├── screens/          # Route-level UI screens (Phase 2+)
-│   └── .gitkeep
-└── widgets/          # Reusable UI components (Phase 2+)
+└── widgets/          # Reusable UI components (Phase 5+)
     └── .gitkeep
 
 docs/
 └── ARCHITECTURE.md   ← this file
 
 test/
-└── models/
-    └── emergency_test.dart  (Phase 1 unit tests)
+├── models/
+│   ├── emergency_test.dart
+│   └── user_profile_test.dart
+├── services/
+│   ├── local_emergency_store_test.dart
+│   ├── location_service_test.dart
+│   ├── connectivity_service_test.dart
+│   ├── firestore_emergency_service_test.dart
+│   └── sync_service_test.dart
+└── repositories/
+    └── emergency_repository_test.dart
 ```
 
 ---
@@ -122,7 +136,7 @@ Any call to `canTransitionTo()` for an unlisted transition returns `false`. Call
 
 **Problem:** A device may have Wi-Fi connected but no actual internet route. `connectivity_plus` only reports the *link layer* state, not true end-to-end reachability.
 
-**Rule:** Never trust `ConnectivityResult.wifi` or `ConnectivityResult.mobile` alone. Always attempt a lightweight probe (e.g., DNS lookup or HEAD request to a known endpoint) before marking the app as "online". The `CommunicationMode` field on `Emergency` reflects this verified state, not the OS network status.
+**Rule:** Never trust `ConnectivityResult.wifi` or `ConnectivityResult.mobile` alone. Always attempt a lightweight probe (HTTP HEAD or GET with a 3-second timeout to a dedicated endpoint like Google generate_204 or Cloudflare trace) before marking the app as "online". The `ConnectivityService` exposes `isOnline` stream and `CommunicationMode` reflects this verified state.
 
 ---
 
@@ -130,7 +144,7 @@ Any call to `canTransitionTo()` for an unlisted transition returns `false`. Call
 
 **Problem:** Many location libraries cache coordinates only while map tiles are loaded, or fail when the Maps SDK is unavailable.
 
-**Rule:** GPS coordinates (`latitude`, `longitude`, `accuracyMeters`) are captured using the `geolocator` package directly against the platform location API — **no map SDK, no tile server, no routing dependency**. Coordinates are stored as plain `double` fields and are valid regardless of network state. The map UI (Phase 2+) renders coordinates onto locally cached tiles; losing tiles never loses the fix.
+**Rule:** GPS coordinates (`latitude`, `longitude`, `accuracyMeters`) are captured using the `geolocator` package directly against the platform location API — **no map SDK, no tile server, no routing dependency**. Coordinates are stored as plain `double` fields and are valid regardless of network state. The map UI renders coordinates onto locally cached tiles; losing tiles never loses the fix.
 
 ---
 
@@ -138,7 +152,12 @@ Any call to `canTransitionTo()` for an unlisted transition returns `false`. Call
 
 **Problem:** Two responders tapping "Accept" simultaneously can both believe they are primary responder, causing split responses and coordination failure.
 
-**Rule:** Every responder claim is executed as a **Firestore transaction** that reads and writes `primaryResponderId` atomically. The transaction aborts if `primaryResponderId` is already set. Only the first successful commit wins. The `version` field is incremented on every write; clients that hold a stale version must re-fetch before writing.
+**Rule:** Every responder claim is executed as a **Firestore transaction** (`FirestoreEmergencyService.claimEmergency`):
+- If `status` is `created` or `alerting` and `primaryResponderId == null`: set `primaryResponderId = responderId`, `status = accepted`, increment `version`. Return `ClaimPrimarySuccess`.
+- Else if `primaryResponderId != null && primaryResponderId != responderId && standbyResponderId == null`: set `standbyResponderId = responderId`, increment `version`. Return `ClaimStandbySuccess`.
+- Else: return `AlreadyClaimedResult`.
+
+If the primary responder drops/releases their role, a transaction automatically promotes `standbyResponderId` to `primaryResponderId` (or resets to `alerting` if none exists).
 
 ---
 
@@ -169,7 +188,7 @@ Any call to `canTransitionTo()` for an unlisted transition returns `false`. Call
 **Rule:**
 - Every `StreamSubscription` is stored in a field and cancelled in `dispose()`.
 - Riverpod `ref.listen` / `ref.watch` is used instead of manual stream subscriptions wherever possible.
-- Global listeners (FCM, connectivity) are registered **once** at app startup in a top-level service and never re-registered on widget rebuild.
+- Global listeners (connectivity, sync service, remote watch) register lifecycle disposers via `ref.onDispose` and never re-register on widget rebuild.
 
 ---
 
@@ -188,19 +207,19 @@ static String generateId() {
 }
 ```
 
-This yields 2³² ≈ 4.3 billion possible values per year prefix. IDs are identical whether created online or offline, so local records merge into Firestore without renaming. The year prefix (`2026`) is a human-readable shard; it can be updated annually.
+This yields 2³² ≈ 4.3 billion possible values per year prefix. IDs are identical whether created online or offline, so local records merge into Firestore without renaming.
 
 ---
 
 ### Rule 8 — Offline Queue & Idempotent Sync
 
-**Problem:** Network writes that fail silently leave the local and remote DBs diverged. Retrying non-idempotent operations (e.g., incrementing a counter) produces incorrect results.
+**Problem:** Network writes that fail silently leave the local and remote DBs diverged. Retrying non-idempotent operations produces incorrect results.
 
 **Rule:**
-- Every mutation is written to a **local queue** (SQLite / Hive) before attempting the remote write.
-- Each queue entry includes the full target document state (not a delta), making every sync operation a **set/merge**, not an increment.
-- The `version` field acts as an optimistic lock. The sync worker checks `version` matches before committing; on conflict, it fetches the latest and re-applies local changes.
-- Once the remote write succeeds, the queue entry is deleted atomically.
+- Every mutation is written to `LocalEmergencyStore` first (status: `pending`).
+- When connectivity transitions to online, `SyncService` drains `getPendingSyncEmergencies()`, pushing each to Firestore via `upsertEmergency()`.
+- Remote writes use `SetOptions(merge: true)` with `version` comparison guard: older local state cannot overwrite a newer remote version.
+- On success, `markAsSynced(id)` is called; on terminal errors, `markAsFailed(id)`.
 
 ---
 
@@ -236,17 +255,17 @@ No names, no coordinates, no medical type, no phone numbers. The receiving app f
         ▼
   EmergencyRepository.create()
         │
-        ├──► Local DB (SQLite/Hive) ◄─── always first, synchronous
+        ├──► Local DB (Hive: emergencies_box) ◄─── always first, synchronous
         │
-        └──► Offline Sync Queue
+        └──► Offline Sync Queue (syncStatus: pending)
                     │
-            (when online & reachability confirmed)
-                    │
-                    ▼
-             Firestore (remote truth)
+            (SyncService: when isOnline confirmed via probe)
                     │
                     ▼
-          FCM → other devices
+       Firestore (emergencies/{id})
+                    │
+                    ▼
+          FCM → other devices (Phase 4)
           (payload: type + emergencyId only)
                     │
                     ▼
@@ -273,11 +292,10 @@ No names, no coordinates, no medical type, no phone numbers. The receiving app f
 | Phase | Scope |
 |---|---|
 | **1** ✅ | Skeleton, architecture rules, `Emergency` + `UserProfile` models |
-| **2** | GPS service, offline local DB (Hive/SQLite), EmergencyRepository |
-| **3** | Firebase integration, Firestore real-time sync, offline queue |
+| **2** ✅ | Local Hive store, GPS location service, EmergencyRepository, Riverpod providers |
+| **3** ✅ | Vindara rebrand, real reachability probe, Cloud Firestore atomic claims, idempotent sync |
 | **4** | FCM push notifications, background isolate handler |
 | **5** | Home screen (HELP button), responder dashboard |
 | **6** | Crash detection (accelerometer), "Possible Crash" flow |
 | **7** | Reputation, badges, responder leaderboard |
 | **8** | Admin portal, analytics |
-

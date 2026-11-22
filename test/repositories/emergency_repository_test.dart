@@ -9,10 +9,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:mocktail/mocktail.dart';
 
-import 'package:safereach/models/emergency.dart';
-import 'package:safereach/repositories/emergency_repository.dart';
-import 'package:safereach/services/local_emergency_store.dart';
-import 'package:safereach/services/location_service.dart';
+import 'package:vindara/models/emergency.dart';
+import 'package:vindara/repositories/emergency_repository.dart';
+import 'package:vindara/services/local_emergency_store.dart';
+import 'package:vindara/services/location_service.dart';
 
 // ---------------------------------------------------------------------------
 // Mocks
