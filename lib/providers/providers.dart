@@ -171,3 +171,4 @@ final allEmergenciesProvider = FutureProvider<List<Emergency>>((ref) async {
   final store = await ref.watch(localStoreProvider.future);
   return store.getAllEmergencies();
 });
+

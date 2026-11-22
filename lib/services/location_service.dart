@@ -283,3 +283,4 @@ class LocationServiceException implements Exception {
   @override
   String toString() => 'LocationServiceException(${error.name})';
 }
+

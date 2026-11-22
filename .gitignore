@@ -37,3 +37,4 @@ ios/Flutter/Flutter.podspec
 # Hive boxes generated during tests (temp dirs are cleaned up, but just in case)
 *.hive
 *.lock
+

@@ -90,3 +90,4 @@ class UserProfileRepository {
     await _opened.delete(_currentProfileKey);
   }
 }
+
