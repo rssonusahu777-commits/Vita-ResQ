@@ -7,7 +7,24 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Vindara</string>
+	<string>Vita ResQ</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Vita ResQ requires GPS location to dispatch emergency rescue teams and locate nearby responders.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Vita ResQ requires continuous background location during active emergency tracking.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Vita ResQ uses Bluetooth for direct peer-to-peer emergency communication when internet is unavailable.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Vita ResQ uses Bluetooth to broadcast and discover nearby emergency alerts offline.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Vita ResQ uses local Wi-Fi direct peer-to-peer networking for offline emergency coordination.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>sms</string>
+		<string>tel</string>
+		<string>https</string>
+		<string>whatsapp</string>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +32,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>vindara</string>
+	<string>jan_sarthi</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

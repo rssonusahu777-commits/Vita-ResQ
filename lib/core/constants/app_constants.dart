@@ -1,47 +1,48 @@
-/// Vindara Core Constants
-/// Community Emergency Response Platform
 class AppConstants {
-  AppConstants._();
+  static const String appName = 'Vita ResQ';
+  static const String appTagline = 'Community-Powered Emergency Response Network';
+  static const String disclaimer112 = 'Vita ResQ connects you with nearby community responders and does NOT replace official 112 emergency services. For life-threatening emergencies, always dial 112 directly.';
+  
+  // Emergency Radius Configuration
+  static const double initialEmergencyRadiusMeters = 500.0;
+  static const double maxEmergencyRadiusMeters = 5000.0;
+  
+  // Location Updates
+  static const int locationUpdateIntervalSeconds = 4;
+  static const int locationDistanceFilterMeters = 5;
 
-  // Application Identity
-  static const String appName = 'Vindara';
-  static const String appTagline = 'Community Emergency Response Platform';
-  static const String appVersion = '1.0.0 (Alpha)';
+  // Responder Reliability Monitor Configuration Constants
+  static const int primaryMonitorIntervalSeconds = 5;
+  static const int locationStaleThresholdSeconds = 15;
+  static const int connectionGracePeriodSeconds = 20;
+  static const int noProgressThresholdSeconds = 120;
+  static const double etaGracePeriodMinutes = 5.0;
+  
+  // Firestore Collections
+  static const String usersCollection = 'users';
+  static const String emergenciesCollection = 'emergencies';
+  static const String respondersSubcollection = 'responders';
 
-  // Emergency Hotlines & Services
-  static const String emergencyHelpline = '112';
-  static const String emergencyHelplineLabel = 'Emergency Helpline 112';
-  static const String ambulanceHelpline = '108';
-  static const String fireHelpline = '101';
-  static const String policeHelpline = '100';
+  // State Machine Values
+  static const String statusSearching = 'SEARCHING';
+  static const String statusAssigned = 'ASSIGNED';
+  static const String statusApproaching = 'APPROACHING';
+  static const String statusArrived = 'ARRIVED';
+  static const String statusCompleted = 'COMPLETED';
+  static const String statusCancelled = 'CANCELLED';
 
-  // Geographic Default (India Reference Point)
-  static const double defaultLatitude = 12.9716;
-  static const double defaultLongitude = 77.5946;
-  static const String defaultCity = 'Bengaluru, India';
+  // AI Assistant Backend Configuration
+  // Configurable via --dart-define=AI_BACKEND_URL=http://your-host:port
+  // Android emulator maps local host machine to 10.0.2.2.
+  static const String defaultAiBackendBaseUrl = String.fromEnvironment(
+    'AI_BACKEND_URL',
+    defaultValue: 'http://10.0.2.2:3000',
+  );
 
-  // State Labels for UI Display
-  static const String statusCreated = 'Registered';
-  static const String statusAlerting = 'Broadcasting HELP';
-  static const String statusAccepted = 'Responder Assigned';
-  static const String statusInProgress = 'En Route / On Scene';
-  static const String statusResolved = 'Resolved & Safe';
-  static const String statusCancelled = 'False Alarm / Cancelled';
-
-  // Detection Source Labels
-  static const String sourceManualSos = 'Manual HELP Alert';
-  static const String sourceManualHelp = 'Manual HELP Alert';
-  static const String sourcePossibleCrash = 'Possible Crash Detected';
-
-  // Communication Mode Labels
-  static const String modeOnline = 'Cloud Connected';
-  static const String modeOfflineNearby = 'Offline Nearby Mesh (BLE/Wi-Fi Direct)';
-
-  // Emergency Type Labels
-  static const String typeRoadAccident = 'Road Crash / Accident';
-  static const String typeMedical = 'Medical Emergency';
-  static const String typeFire = 'Fire & Smoke';
-  static const String typePersonalSafety = 'Personal Safety Threat';
-  static const String typeOther = 'Critical Hazard / Other';
+  // Analytics Backend Configuration
+  // Configurable via --dart-define=ANALYTICS_BACKEND_URL=http://your-host:port
+  static const String defaultAnalyticsBackendBaseUrl = String.fromEnvironment(
+    'ANALYTICS_BACKEND_URL',
+    defaultValue: 'http://10.0.2.2:3000',
+  );
 }
-

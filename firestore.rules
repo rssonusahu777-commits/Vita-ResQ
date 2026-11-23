@@ -2,103 +2,86 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function isOwner(uid) {
-      return isAuthenticated() && request.auth.uid == uid;
-    }
-
-    // -------------------------------------------------------------------------
-    // Users Collection
-    // -------------------------------------------------------------------------
-    match /users/{uid} {
-      // Any authenticated user can read responder profiles to coordinate assistance
-      allow read: if isAuthenticated();
-
-      // Users can create their own profile document with non-privileged defaults
-      allow create: if isOwner(uid)
-        && request.resource.data.keys().hasAll(['uid', 'displayName'])
-        && request.resource.data.uid == uid
-        && (!('reputationPoints' in request.resource.data) || request.resource.data.reputationPoints == 0)
-        && (!('successfulAssistanceCount' in request.resource.data) || request.resource.data.successfulAssistanceCount == 0)
-        && (!('responseHistoryCount' in request.resource.data) || request.resource.data.responseHistoryCount == 0)
-        && (!('badges' in request.resource.data) || request.resource.data.badges.size() == 0)
-        && (!('isVerifiedResponder' in request.resource.data) || request.resource.data.isVerifiedResponder == false);
-
-      // Users can update their own non-privileged profile fields (displayName, isAvailable, fcmToken),
-      // but privileged reputation/verification fields can ONLY be changed via server-side Admin SDK.
-      allow update: if isOwner(uid)
-        && request.resource.data.uid == resource.data.uid
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
-              'reputationPoints',
-              'successfulAssistanceCount',
-              'responseHistoryCount',
-              'badges',
-              'isVerifiedResponder'
-            ]));
-
-      // Profile deletion is disallowed to preserve historical responder trust records
+    // =========================================================================
+    // USERS COLLECTION
+    // =========================================================================
+    // Profiles can be read by authenticated users (volunteers & victims).
+    // Profiles can ONLY be created or updated by the authenticated owner.
+    // Deletions are forbidden.
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == userId;
       allow delete: if false;
     }
 
-    // -------------------------------------------------------------------------
-    // Emergencies Collection
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // EMERGENCIES COLLECTION
+    // =========================================================================
+    // Emergencies can be read by all authenticated users (radar discovery & tracking).
+    // Creation is strictly restricted to the authenticated victim for themselves.
+    // Updates are permitted for victims (status/location) and responders (claims).
+    // Deletions are forbidden to preserve life-safety audit logs.
     match /emergencies/{emergencyId} {
-      // Any authenticated victim or responder can read emergencies to coordinate response
-      allow read: if isAuthenticated();
+      allow read: if request.auth != null;
 
-      // Creation rules:
-      // - Must be created by the authenticated victim
-      // - ID must match canonical EMG-2026-XXXXXXXX format
-      // - Initial status must be 'created' or 'alerting'
-      // - Version must be 1 or higher
-      allow create: if isAuthenticated()
-        && request.auth.uid == request.resource.data.victimId
-        && emergencyId.matches('^EMG-2026-[A-F0-9]{8}$')
-        && request.resource.data.status in ['created', 'alerting']
-        && request.resource.data.version >= 1
-        && request.resource.data.keys().hasAll([
-             'id', 'victimId', 'latitude', 'longitude', 'accuracyMeters',
-             'type', 'createdAt', 'detectionSource', 'status', 'version', 'communicationMode'
-           ]);
-
-      // Update rules:
-      // - Version must monotonically increase (optimistic concurrency guard)
-      // - Immutable core fields: victimId, createdAt, id cannot be modified
-      // - Only valid participants can mutate emergency state:
-      //   * The victim
-      //   * The assigned primary responder
-      //   * An unassigned eligible responder claiming primary (Rule #3)
-      //   * The assigned standby responder
-      //   * An unassigned responder claiming standby backup (Rule #3)
-      allow update: if isAuthenticated()
-        // Monotonic version increment
-        && request.resource.data.version > resource.data.version
-        // Immutability of core metadata
-        && request.resource.data.victimId == resource.data.victimId
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.id == resource.data.id
-        // Participant permission check
+      // 1. SOS Dispatch / Emergency Creation:
+      // - Must be authenticated
+      // - victimId MUST match authenticated caller UID (no impersonation)
+      // - Emergency ID must match document path
+      // - Initial status must be 'SEARCHING' for ordinary online live emergencies
+      // - Narrow exception: Authenticated victim synchronizing an offline emergency (JS-OFF-*)
+      //   that reached a terminal state (COMPLETED or CANCELLED) offline may create directly in that state
+      // - Initial radius must be within safety bounds (<= 5000m)
+      // - Coordinates must be valid numbers within geographic bounds
+      allow create: if request.auth != null
+        && request.resource.data.victimId == request.auth.uid
+        && request.resource.data.id == emergencyId
+        && request.resource.data.latitude is number
+        && request.resource.data.latitude >= -90.0 && request.resource.data.latitude <= 90.0
+        && request.resource.data.longitude is number
+        && request.resource.data.longitude >= -180.0 && request.resource.data.longitude <= 180.0
+        && request.resource.data.currentRadiusMeters <= 5000.0
         && (
-          // Victim can update status (e.g. resolve, cancel)
-          request.auth.uid == resource.data.victimId ||
-          // Existing primary responder can update status / arrival
-          request.auth.uid == resource.data.primaryResponderId ||
-          // Unassigned responder claiming primary (Rule #3: atomic claim)
-          (resource.data.primaryResponderId == null && request.resource.data.primaryResponderId == request.auth.uid) ||
-          // Existing standby responder
-          request.auth.uid == resource.data.standbyResponderId ||
-          // Unassigned responder claiming standby backup (Rule #3: atomic claim)
-          (resource.data.standbyResponderId == null && request.resource.data.standbyResponderId == request.auth.uid)
+          request.resource.data.status == 'SEARCHING' ||
+          (
+            emergencyId.matches('^JS-OFF-.*') &&
+            request.resource.data.id.matches('^JS-OFF-.*') &&
+            request.resource.data.status in ['COMPLETED', 'CANCELLED']
+          )
         );
 
-      // Explicitly DENY delete to preserve emergency audit integrity & accountability
+      // 2. Emergency State Updates:
+      // - Victim can update location, cancel emergency, or update radius
+      // - Responders can claim emergency (add themselves to responders map)
+      // - Responders can update their own location and responder status
+      // - Responders can update status (ARRIVED, COMPLETED)
+      // - Background expanding radius / notified users updates
+      allow update: if request.auth != null && (
+        // Caller is the victim
+        request.auth.uid == resource.data.victimId ||
+        // Caller is an existing responder
+        request.auth.uid in resource.data.responders.keys() ||
+        // Caller is claiming / joining the emergency responders map
+        request.resource.data.responders.keys().hasAny([request.auth.uid]) ||
+        // User adding their own UID to notifiedUserIds
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notifiedUserIds'])
+          && request.resource.data.notifiedUserIds.hasAll(resource.data.notifiedUserIds)) ||
+        // Radius expansion timer updates
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentRadiusMeters', 'updatedAt'])
+      );
+
       allow delete: if false;
+
+      // Responders subcollection (if used)
+      match /responders/{responderId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == responderId;
+      }
+    }
+
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
-

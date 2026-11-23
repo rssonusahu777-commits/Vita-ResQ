@@ -1,153 +1,109 @@
-// lib/services/connectivity_service.dart
-//
-// Vindara — Real Internet Reachability Service
-// Package: com.vindara.app
-//
-// Design rule:
-//   Rule #1 — Real reachability vs. no-Wi-Fi.
-//   Never trust ConnectivityResult alone. Always verify end-to-end internet
-//   reachability via active lightweight HTTP probe (HEAD/GET with 3s timeout).
-
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
+import '../models/communication_mode.dart';
 
-/// Interface for probing network endpoints to verify end-to-end reachability.
-abstract class NetworkReachabilityProbe {
-  Future<bool> probe({Duration timeout = const Duration(seconds: 3)});
-}
-
-/// Default HTTP probe that pings reliable captive-portal / connectivity endpoints.
-class HttpReachabilityProbe implements NetworkReachabilityProbe {
-  final http.Client _client;
-  final List<Uri> probeUrls;
-
-  HttpReachabilityProbe({
-    http.Client? client,
-    List<Uri>? urls,
-  })  : _client = client ?? http.Client(),
-        probeUrls = urls ??
-            [
-              Uri.parse('https://www.google.com/generate_204'),
-              Uri.parse('https://1.1.1.1/cdn-cgi/trace'),
-            ];
-
-  @override
-  Future<bool> probe({Duration timeout = const Duration(seconds: 3)}) async {
-    for (final url in probeUrls) {
-      try {
-        final response = await _client.head(url).timeout(timeout);
-        if (response.statusCode >= 200 && response.statusCode < 400) {
-          return true;
-        }
-      } catch (_) {
-        // Try fallback GET if HEAD is rejected by intermediate proxy
-        try {
-          final getResponse = await _client.get(url).timeout(timeout);
-          if (getResponse.statusCode >= 200 && getResponse.statusCode < 400) {
-            return true;
-          }
-        } catch (_) {
-          // Continue to next probe url
-        }
-      }
-    }
-    return false;
-  }
-}
-
-/// Service that combines interface connectivity events with active HTTP probes
-/// to expose a continuous, reliable [isOnline] stream and on-demand [checkReachability].
 class ConnectivityService {
-  final Connectivity _connectivity;
-  final NetworkReachabilityProbe _probe;
-  final Duration periodicInterval;
+  static final ConnectivityService _instance = ConnectivityService._internal();
+  factory ConnectivityService() => _instance;
+  ConnectivityService._internal();
 
-  final StreamController<bool> _isOnlineController =
-      StreamController<bool>.broadcast();
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  Timer? _periodicTimer;
+  final Connectivity _connectivity = Connectivity();
+  final StreamController<CommunicationMode> _modeController =
+      StreamController<CommunicationMode>.broadcast();
 
-  bool _lastKnownOnlineState = false;
+  CommunicationMode _currentMode = CommunicationMode.offline;
+  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  Timer? _pingTimer;
 
-  ConnectivityService({
-    Connectivity? connectivity,
-    NetworkReachabilityProbe? probe,
-    this.periodicInterval = const Duration(seconds: 30),
-  })  : _connectivity = connectivity ?? Connectivity(),
-        _probe = probe ?? HttpReachabilityProbe();
+  int _probeSequence = 0;
+  bool _isChecking = false;
 
-  /// Whether current verified state is online.
-  bool get isCurrentlyOnline => _lastKnownOnlineState;
+  CommunicationMode get currentMode => _currentMode;
+  Stream<CommunicationMode> get modeStream => _modeController.stream;
 
-  /// Continuous stream emitting true when verified online, false otherwise.
-  Stream<bool> get isOnline => _isOnlineController.stream;
+  void initialize() {
+    _checkConnectivityImmediate();
 
-  /// Initializes listening to connectivity changes and starts background health checks.
-  Future<void> init() async {
-    // Perform initial check
-    final initial = await checkReachability();
-    _updateState(initial);
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen((result) {
+      if (result == ConnectivityResult.none) {
+        _setMode(CommunicationMode.offline);
+      } else {
+        _checkConnectivity();
+      }
+    });
 
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
-      (results) async {
-        final hasInterface = results.any(
-          (r) =>
-              r == ConnectivityResult.wifi ||
-              r == ConnectivityResult.mobile ||
-              r == ConnectivityResult.ethernet,
-        );
-
-        if (!hasInterface) {
-          _updateState(false);
-        } else {
-          // Interface exists: perform immediate active probe to check for captive portals or dead Wi-Fi
-          final online = await _probe.probe();
-          _updateState(online);
-        }
-      },
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(
+      const Duration(seconds: 8),
+      (_) => _checkConnectivity(),
     );
+  }
 
-    // Periodic safety check in case DNS/routing fails without interface drop
-    if (periodicInterval > Duration.zero) {
-      _periodicTimer = Timer.periodic(periodicInterval, (_) async {
-        final online = await checkReachability();
-        _updateState(online);
-      });
+  Future<void> _checkConnectivityImmediate() async {
+    try {
+      ConnectivityResult result = await _connectivity.checkConnectivity();
+      if (result == ConnectivityResult.none) {
+        _setMode(CommunicationMode.offline);
+      } else {
+        await _checkConnectivity();
+      }
+    } catch (_) {
+      _setMode(CommunicationMode.offline);
     }
   }
 
-  /// On-demand reachability check.
-  Future<bool> checkReachability() async {
-    final results = await _connectivity.checkConnectivity();
-    final hasInterface = results.any(
-      (r) =>
-          r == ConnectivityResult.wifi ||
-          r == ConnectivityResult.mobile ||
-          r == ConnectivityResult.ethernet,
-    );
+  Future<void> _checkConnectivity() async {
+    if (_isChecking) return;
+    _isChecking = true;
 
-    if (!hasInterface) {
-      return false;
-    }
+    int seq = ++_probeSequence;
+    bool hasInternet = await _httpReachabilityProbe();
 
-    return await _probe.probe();
+    _isChecking = false;
+
+    // Reject stale async probe results
+    if (seq != _probeSequence) return;
+
+    CommunicationMode newMode =
+        hasInternet ? CommunicationMode.online : CommunicationMode.offline;
+
+    _setMode(newMode);
   }
 
-  void _updateState(bool isOnline) {
-    if (_lastKnownOnlineState != isOnline || !_isOnlineController.hasListener) {
-      _lastKnownOnlineState = isOnline;
-      if (!_isOnlineController.isClosed) {
-        _isOnlineController.add(isOnline);
+  void _setMode(CommunicationMode mode) {
+    if (_currentMode != mode) {
+      _currentMode = mode;
+      if (!_modeController.isClosed) {
+        _modeController.add(_currentMode);
       }
     }
   }
 
-  /// Disposes stream subscriptions and timers.
-  Future<void> dispose() async {
-    await _connectivitySubscription?.cancel();
-    _periodicTimer?.cancel();
-    await _isOnlineController.close();
+  /// Lightweight HTTP probe checking Google captive portal endpoints with 2.5s timeout
+  Future<bool> _httpReachabilityProbe() async {
+    try {
+      final response = await http
+          .get(Uri.parse('https://clients3.google.com/generate_204'))
+          .timeout(const Duration(milliseconds: 2500));
+      return response.statusCode == 204 || response.statusCode == 200;
+    } catch (_) {
+      try {
+        final fallback = await http
+            .get(Uri.parse('https://www.google.com/generate_204'))
+            .timeout(const Duration(milliseconds: 2500));
+        return fallback.statusCode == 204 || fallback.statusCode == 200;
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    _pingTimer?.cancel();
+    _modeController.close();
   }
 }
-
