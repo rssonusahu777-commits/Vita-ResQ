@@ -13,6 +13,7 @@
 //   Rule #8 — Offline sync queue auto-drains when online.
 //   Rule #9 — Minimal push payloads without sensitive PII.
 //   Rule #10 — Possible crash detection with 10s countdown.
+//   Phase 7 — Nearby offline device-to-device relay and location providers.
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,6 +26,7 @@ import '../services/crash_detection_service.dart';
 import '../services/firestore_emergency_service.dart';
 import '../services/local_emergency_store.dart';
 import '../services/location_service.dart';
+import '../services/nearby_relay_service.dart';
 import '../services/notification_service.dart';
 import '../services/sync_service.dart';
 
@@ -306,4 +308,51 @@ final remoteEmergencyStreamProvider =
 final allEmergenciesProvider = FutureProvider<List<Emergency>>((ref) async {
   final store = await ref.watch(localStoreProvider.future);
   return store.getAllEmergencies();
+});
+
+// ---------------------------------------------------------------------------
+// 12. Nearby Relay & Offline Mesh (Phase 7 — Rules #1, #6, #7, #8)
+// ---------------------------------------------------------------------------
+
+final nearbyTransportProvider = Provider<NearbyTransport>((ref) {
+  final transport = DefaultNearbyTransport();
+  ref.onDispose(transport.dispose);
+  return transport;
+});
+
+final nearbyRelayServiceProvider =
+    FutureProvider<NearbyRelayService>((ref) async {
+  final store = await ref.watch(localStoreProvider.future);
+  final transport = ref.watch(nearbyTransportProvider);
+  final service = NearbyRelayService(
+    transport: transport,
+    localStore: store,
+  );
+
+  final isOnline = ref.watch(isOnlineStreamProvider).valueOrNull ?? false;
+  if (!isOnline) {
+    await service.startRelay();
+  }
+
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+final relayedEmergenciesStreamProvider = StreamProvider<Emergency>((ref) {
+  final serviceAsync = ref.watch(nearbyRelayServiceProvider);
+  return serviceAsync.when(
+    data: (service) => service.relayedEmergenciesStream,
+    loading: () => const Stream.empty(),
+    error: (e, _) => Stream.error(e),
+  );
+});
+
+final responderLastKnownLocationProvider =
+    Provider<Map<String, double?>?>((ref) {
+  final storeAsync = ref.watch(localStoreProvider);
+  return storeAsync.when(
+    data: (store) => store.getLastKnownLocation(),
+    loading: () => null,
+    error: (_, __) => null,
+  );
 });

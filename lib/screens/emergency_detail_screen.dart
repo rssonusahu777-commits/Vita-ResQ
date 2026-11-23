@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/emergency.dart';
 import '../providers/providers.dart';
 import '../theme/vindara_theme.dart';
+import '../widgets/location_card.dart';
 
 class EmergencyDetailScreen extends ConsumerStatefulWidget {
   final String emergencyId;
@@ -39,6 +40,9 @@ class _EmergencyDetailScreenState extends ConsumerState<EmergencyDetailScreen> {
     final emergencyAsync = ref.watch(emergencyStreamProvider(widget.emergencyId));
     final userProfile = ref.watch(currentUserProfileProvider).asData?.value;
     final currentUid = userProfile?.uid ?? 'local-user';
+    final isOnlineAsync = ref.watch(isOnlineStreamProvider);
+    final isOnline = isOnlineAsync.valueOrNull ?? false;
+    final responderLocation = ref.watch(responderLastKnownLocationProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -62,7 +66,13 @@ class _EmergencyDetailScreenState extends ConsumerState<EmergencyDetailScreen> {
           if (emergency == null) {
             return _buildNotFound(context);
           }
-          return _buildEmergencyContent(context, emergency, currentUid);
+          return _buildEmergencyContent(
+            context,
+            emergency,
+            currentUid,
+            isOnline,
+            responderLocation,
+          );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error loading emergency: $e')),
@@ -95,6 +105,8 @@ class _EmergencyDetailScreenState extends ConsumerState<EmergencyDetailScreen> {
     BuildContext context,
     Emergency emergency,
     String currentUid,
+    bool isOnline,
+    Map<String, double?>? responderLocation,
   ) {
     final isVictim = emergency.victimId == currentUid;
     final isPrimary = emergency.primaryResponderId == currentUid;
@@ -106,8 +118,13 @@ class _EmergencyDetailScreenState extends ConsumerState<EmergencyDetailScreen> {
         // Top Banner / Status Stepper Card
         _buildStatusCard(context, emergency),
 
-        // Offline-Independent GPS Location Card (Rule #2)
-        _buildGpsCard(context, emergency),
+        // Hybrid Online OSM / Offline Distance Location Card (Rule #2)
+        LocationCard(
+          emergency: emergency,
+          isOnline: isOnline,
+          responderLatitude: responderLocation?['latitude'],
+          responderLongitude: responderLocation?['longitude'],
+        ),
 
         // Responder & Coordination Card
         _buildResponderCard(context, emergency, isVictim, isPrimary, isStandby),
@@ -227,100 +244,6 @@ class _EmergencyDetailScreenState extends ConsumerState<EmergencyDetailScreen> {
             Text(
               'Source: ${emergency.detectionSource == DetectionSource.possibleCrash ? "Possible Crash Detection" : "Manual Help Request"} • Mode: ${emergency.communicationMode.name.toUpperCase()}',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Offline-Independent GPS Location Card (Rule #2)
-  // ---------------------------------------------------------------------------
-  Widget _buildGpsCard(BuildContext context, Emergency emergency) {
-    return Card(
-      color: Colors.blueGrey.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.gps_fixed_rounded, color: Colors.blueGrey, size: 20),
-                SizedBox(width: 8),
-                Text(
-                  'GPS Coordinates (Offline Ready)',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueGrey,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.blueGrey.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Latitude:   ${emergency.latitude.toStringAsFixed(6)}',
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Longitude:  ${emergency.longitude.toStringAsFixed(6)}',
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Accuracy:   ±${emergency.accuracyMeters.toStringAsFixed(1)} metres',
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 13,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.copy, size: 16),
-                    label: const Text('Copy Coordinates'),
-                    onPressed: () => _copyCoordinates(context, emergency),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.map_outlined, size: 16),
-                    label: const Text('Open in Maps'),
-                    onPressed: () => _openExternalMaps(
-                      emergency.latitude,
-                      emergency.longitude,
-                    ),
-                  ),
-                ),
-              ],
             ),
           ],
         ),
@@ -618,17 +541,6 @@ class _EmergencyDetailScreenState extends ConsumerState<EmergencyDetailScreen> {
         duration: Duration(seconds: 2),
       ),
     );
-  }
-
-  Future<void> _openExternalMaps(double lat, double lng) async {
-    final geoUri = Uri.parse('geo:$lat,$lng?q=$lat,$lng');
-    final webUri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
-
-    if (await canLaunchUrl(geoUri)) {
-      await launchUrl(geoUri);
-    } else if (await canLaunchUrl(webUri)) {
-      await launchUrl(webUri, mode: LaunchMode.externalApplication);
-    }
   }
 
   Future<void> _launchOfficial112(BuildContext context) async {

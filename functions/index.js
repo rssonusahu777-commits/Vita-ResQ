@@ -9,7 +9,7 @@
  *   Rule #5 — High-priority delivery headers for waking background devices.
  */
 
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 
 if (!admin.apps.length) {
@@ -145,6 +145,95 @@ exports.onEmergencyCreated = onDocumentCreated(
     } catch (error) {
       console.error(`Error sending emergency push notification for ${emergencyId}:`, error);
     }
+  }
+);
+
+/**
+ * Triggered whenever an emergency document is updated in Firestore.
+ * Rewards verified responders upon 'resolved' status transition (Phase 7):
+ * - Anti-Gaming: Zero points awarded for merely accepting.
+ * - Anti-Farming: Zero points awarded if primaryResponderId === victimId.
+ * - Primary Responder: +50 points, +1 successfulAssistanceCount, badge progression.
+ * - Standby Responders: +20 points each.
+ */
+exports.onEmergencyUpdated = onDocumentUpdated(
+  {
+    document: "emergencies/{emergencyId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    const beforeData = event.data.before ? event.data.before.data() : null;
+    const afterData = event.data.after ? event.data.after.data() : null;
+
+    if (!beforeData || !afterData) return;
+
+    const beforeStatus = beforeData.status;
+    const afterStatus = afterData.status;
+    const emergencyId = event.params.emergencyId;
+
+    // Only award points when newly transitioning to 'resolved'
+    if (beforeStatus === "resolved" || afterStatus !== "resolved") {
+      return;
+    }
+
+    const victimId = afterData.victimId;
+    const primaryResponderId = afterData.primaryResponderId;
+    const standbyResponderIds = afterData.standbyResponderIds || [];
+
+    const db = admin.firestore();
+    const batch = db.batch();
+
+    // 1. Primary Responder Award (+50 pts & +1 assist)
+    if (primaryResponderId && primaryResponderId !== victimId) {
+      const primaryUserRef = db.collection("users").doc(primaryResponderId);
+      const primaryDoc = await primaryUserRef.get();
+
+      if (primaryDoc.exists) {
+        const userData = primaryDoc.data();
+        const currentPoints = userData.reputationPoints || 0;
+        const currentAssists = (userData.successfulAssistanceCount || 0) + 1;
+        const badges = new Set(userData.badges || []);
+
+        // Milestone Badges
+        if (currentAssists >= 1) badges.add("first_responder");
+        if (currentAssists >= 5) badges.add("community_guardian");
+        if (currentAssists >= 15) badges.add("vindara_vanguard");
+
+        batch.update(primaryUserRef, {
+          reputationPoints: currentPoints + 50,
+          successfulAssistanceCount: currentAssists,
+          badges: Array.from(badges),
+          lastAssistedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        console.log(`Awarded 50 points to primary responder ${primaryResponderId} for emergency ${emergencyId}.`);
+      }
+    } else if (primaryResponderId === victimId) {
+      console.log(`Self-farming attempt blocked: victim ${victimId} cannot claim reward for emergency ${emergencyId}.`);
+    }
+
+    // 2. Standby Responders Award (+20 pts)
+    for (const standbyId of standbyResponderIds) {
+      if (!standbyId || standbyId === victimId || standbyId === primaryResponderId) {
+        continue;
+      }
+
+      const standbyRef = db.collection("users").doc(standbyId);
+      const standbyDoc = await standbyRef.get();
+
+      if (standbyDoc.exists) {
+        const standbyData = standbyDoc.data();
+        const currentPoints = standbyData.reputationPoints || 0;
+
+        batch.update(standbyRef, {
+          reputationPoints: currentPoints + 20,
+        });
+
+        console.log(`Awarded 20 points to standby responder ${standbyId} for emergency ${emergencyId}.`);
+      }
+    }
+
+    await batch.commit();
   }
 );
 

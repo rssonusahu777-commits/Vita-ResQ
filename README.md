@@ -16,7 +16,8 @@ Vindara is an offline-first community emergency response platform built in Flutt
 | **Phase 4** | FCM push notifications, all-state lifecycle deep-linking, privacy-minimal Cloud Function alert dispatch | ✅ Completed (`phase-4`) |
 | **Phase 5** | Core UI: Home Screen (HELP button), 112 Official layer, and live Emergency Detail screen | ✅ Completed (`phase-5`) |
 | **Phase 6** | Possible crash detection service (sensors_plus), 10s cancellable countdown, and monitoring controls | ✅ Completed (`phase-6`) |
-| **Phase 7** | Nearby offline device-to-device relay, responder rewards & trust progression, hybrid OSM/offline distance card | ⏳ In Progress |
+| **Phase 7** | Nearby offline device-to-device relay, responder rewards & trust progression, hybrid OSM/offline distance card | ✅ Completed (`phase-7`) |
+| **Phase 8** | Admin portal & responder verification | ⏳ Planned |
 
 ---
 

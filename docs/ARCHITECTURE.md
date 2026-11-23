@@ -230,5 +230,5 @@ No victim name, no phone number, no address, no coordinates. Sensitive details r
 | **4** ✅ | FCM push notification architecture, deep-linking, privacy-minimal Cloud Function |
 | **5** ✅ | Home screen (HELP button), 112 official layer, live Emergency Detail screen |
 | **6** ✅ | Possible crash detection (sensors_plus), 10s countdown, profile & home monitoring controls |
-| **7** | Nearby offline device-to-device relay, responder rewards, hybrid OSM/offline distance card |
+| **7** ✅ | Nearby offline device-to-device relay, responder rewards, hybrid OSM/offline distance card |
 | **8** | Admin portal & responder verification |
