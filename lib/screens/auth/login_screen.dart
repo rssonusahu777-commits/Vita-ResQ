@@ -120,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: 68,
                       height: 68,
                       decoration: BoxDecoration(
-                        color: AppTheme.surfaceLowest,
+                        color: Colors.black,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: AppTheme.surfaceHighest),
                         boxShadow: [
@@ -131,10 +131,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                       ),
-                      child: const Icon(
-                        Icons.handshake_outlined,
-                        size: 38,
-                        color: AppTheme.primaryRed,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.all(6.0),
+                          child: Image.asset(
+                            'assets/icon/app_logo.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
