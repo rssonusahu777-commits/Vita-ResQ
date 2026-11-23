@@ -216,5 +216,37 @@ class FirestoreEmergencyService {
       }
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Live Location Streaming Updates
+  // ---------------------------------------------------------------------------
+
+  /// Live-updates victim's GPS coordinates in Cloud Firestore
+  Future<void> updateVictimLocation(
+      String emergencyId, double latitude, double longitude) async {
+    try {
+      await _collection.doc(emergencyId).update({
+        'latitude': latitude,
+        'longitude': longitude,
+        'lastLocationUpdatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Firestore updateVictimLocation error: $e');
+    }
+  }
+
+  /// Live-updates responder's GPS coordinates in Cloud Firestore
+  Future<void> updateResponderLocation(
+      String emergencyId, double latitude, double longitude) async {
+    try {
+      await _collection.doc(emergencyId).update({
+        'responderLatitude': latitude,
+        'responderLongitude': longitude,
+        'responderLocationUpdatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Firestore updateResponderLocation error: $e');
+    }
+  }
 }
 

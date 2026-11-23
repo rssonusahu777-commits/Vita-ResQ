@@ -7,6 +7,7 @@ import '../models/emergency.dart';
 import '../services/connectivity_service.dart';
 import '../services/location_service.dart';
 import '../services/offline_p2p_service.dart';
+import '../services/permission_service.dart';
 import 'active_emergency_screen.dart';
 import 'crash_detection_screen.dart';
 import 'responder_alerts_screen.dart';
@@ -46,6 +47,10 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
   StreamSubscription<Emergency>? _p2pAlertsSub;
   P2pMeshStatus _p2pStatus = P2pMeshStatus.idle;
 
+  // Universal permission banner state
+  UniversalPermissionStatus? _permStatus;
+  bool _dismissedPermBanner = false;
+
   // HELP button press & hold state
   late final AnimationController _holdController;
   late final AnimationController _pulseController;
@@ -58,6 +63,7 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
     _initGps();
     _initConnectivity();
     _initP2pMesh();
+    _checkUniversalPermissions();
 
     // 2-second hold controller for tactile HELP press
     _holdController = AnimationController(
@@ -147,6 +153,19 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
       debugPrint('SosHub P2P discovery auto-start error: $e');
       return false;
     });
+  }
+
+  Future<void> _checkUniversalPermissions() async {
+    try {
+      final status = await PermissionService.instance.checkPermissions();
+      if (mounted) {
+        setState(() {
+          _permStatus = status;
+        });
+      }
+    } catch (e) {
+      debugPrint('Permission pre-flight check error: $e');
+    }
   }
 
   @override
@@ -405,6 +424,10 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
         children: [
+          // 0. UNIVERSAL PERMISSION / GPS BANNER
+          if (_permStatus != null && !_permStatus!.isFullyGranted && !_dismissedPermBanner)
+            _buildPermissionBanner(),
+
           // 1. TOP STATUS PILL CARD (Split interactive halves)
           _buildTopStatusPillCard(isOnline),
           const SizedBox(height: 10),
@@ -452,6 +475,92 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
 
           // 5. SLIM BOTTOM SAFETY & 112 ACTION STRIP
           _buildBottomSafetyStrip(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPermissionBanner() {
+    final status = _permStatus!;
+    final isGpsOff = !status.isLocationServiceEnabled;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isGpsOff ? const Color(0xFFFFFBEB) : const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isGpsOff ? AppColors.warningAmber : AppColors.primaryRed.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isGpsOff ? Icons.location_off_rounded : Icons.shield_outlined,
+                size: 18,
+                color: isGpsOff ? AppColors.warningAmber : AppColors.primaryRed,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isGpsOff ? 'Turn on Location Services' : 'Emergency Permissions Needed',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: isGpsOff ? const Color(0xFFB45309) : AppColors.primaryRed,
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: () => setState(() => _dismissedPermBanner = true),
+                child: const Icon(Icons.close, size: 16, color: AppColors.textTertiary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isGpsOff
+                ? 'Device GPS is disabled. Accurate location cannot be acquired for emergency dispatch.'
+                : 'Vindara needs Location and Nearby Device permissions for live tracking and offline peer mesh.',
+            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.3),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (isGpsOff)
+                TextButton(
+                  onPressed: () async {
+                    await PermissionService.instance.promptEnableLocationService();
+                    await _checkUniversalPermissions();
+                  },
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: const Color(0xFFB45309),
+                  ),
+                  child: const Text('ENABLE GPS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                )
+              else
+                TextButton(
+                  onPressed: () async {
+                    final res = await PermissionService.instance.requestEmergencyPermissions();
+                    if (mounted) setState(() => _permStatus = res);
+                    if (!res.isFullyGranted) {
+                      await PermissionService.instance.openSettings();
+                    }
+                  },
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: AppColors.primaryRed,
+                  ),
+                  child: const Text('GRANT / SETTINGS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                ),
+            ],
+          ),
         ],
       ),
     );

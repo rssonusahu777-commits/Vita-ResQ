@@ -43,6 +43,11 @@ dependencies:
   # --- GPS / Location ---
   geolocator: ^13.0.2
   permission_handler: ^11.3.1
+  device_info_plus: ^10.1.2
+
+  # --- Interactive Maps (OpenStreetMap & Live Tracking) ---
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
 
   # --- Firebase & Cloud Firestore ---
   firebase_core: ^3.3.0

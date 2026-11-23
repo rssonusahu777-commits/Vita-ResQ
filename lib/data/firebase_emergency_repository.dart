@@ -411,6 +411,22 @@ class FirebaseEmergencyRepository implements EmergencyRepository {
       _fallbackRepo.updateCurrentUserAvailability(isAvailable);
 
   @override
+  Future<void> updateVictimLocation(String emergencyId, double latitude, double longitude) async {
+    await _fallbackRepo.updateVictimLocation(emergencyId, latitude, longitude);
+    if (_isFirebaseReady && _firestoreService != null) {
+      await _firestoreService!.updateVictimLocation(emergencyId, latitude, longitude);
+    }
+  }
+
+  @override
+  Future<void> updateResponderLocation(String emergencyId, double latitude, double longitude) async {
+    await _fallbackRepo.updateResponderLocation(emergencyId, latitude, longitude);
+    if (_isFirebaseReady && _firestoreService != null) {
+      await _firestoreService!.updateResponderLocation(emergencyId, latitude, longitude);
+    }
+  }
+
+  @override
   void dispose() {
     _firestoreSubscription?.cancel();
     _activeEmergenciesController.close();

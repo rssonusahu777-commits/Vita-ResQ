@@ -2,7 +2,7 @@
 
 > **Package:** `com.vindara.app`  
 > **Platform:** Flutter (Android & iOS)  
-> **Status:** Production Release (`v1.0.1`)  
+> **Status:** Production Release (`v1.0.3`)  
 > **Rule:** Every developer and AI agent MUST update this document immediately upon completing any feature, enhancement, or bug fix.
 
 ---
@@ -70,9 +70,48 @@
 - **Hybrid Cloud Relay:** If any peer receiving the offline P2P emergency alert has active internet reachability (verified via `ConnectivityService`), that peer acts as a community gateway, automatically syncing the emergency to Cloud Firestore (`FirestoreEmergencyService.upsertEmergency`) and marking it synced locally.
 - **Privacy & Lightweight Radios:** The P2P byte payload is strictly constrained to emergency coordinates, victim details, type, apparent severity, and recommended responder skills (`cpr`, `first_aid`), completely omitting heavy media (audio/camera buffers) to guarantee rapid packet delivery and maintain victim privacy.
 
+### Feature 12: Universal Cross-Version Android Compatibility (Android 6.0+ through Android 14+)
+- **Implementation:** `lib/services/permission_service.dart`, `android/app/build.gradle.kts`, `android/app/src/main/AndroidManifest.xml`
+- **Architectural Rules:** Rule #2 (Offline-Independent GPS), Universal Hardware Availability.
+- **Description:** Provides seamless installation and runtime compatibility across legacy and cutting-edge Android devices (API 23 / Android 6.0 Marshmallow up through API 34+ / Android 14+):
+  * **Core Library Desugaring:** Enabled with `desugar_jdk_libs:2.1.4` and `coreLibraryDesugaringEnabled = true` to allow modern Java time and stream APIs on older Android platforms.
+  * **Runtime SDK Adaptation:** `PermissionService` dynamically inspects `androidInfo.version.sdkInt` to request only permissions supported by the user's OS:
+    - *All Versions (API 23+):* Requests Fine & Coarse Location and checks if GPS hardware is enabled (prompting to enable location services if disabled).
+    - *Android 12+ (API 31+):* Requests runtime Bluetooth Scan, Advertise, and Connect.
+    - *Android 13+ (API 33+):* Requests Nearby Wi-Fi Devices and Post Notifications.
+  * **Safety Non-Blocking:** Older phones gracefully skip modern permission prompts without throwing exceptions or failing app initialization.
+  * **Inline Warning Banner:** Surfaces an informative banner in the home hub if GPS hardware is turned off or critical location permissions are denied, with one-tap deep link to system settings.
+
+### Feature 13: Online Range-Based Alert Dispatch & Dynamic Proximity Filter
+- **Implementation:** `lib/screens/responder_alerts_screen.dart`, `lib/models/emergency.dart`
+- **Description:** Community responders can filter active emergency alerts by geographical radius chips (`1 km`, `3 km`, `5 km`, `10 km`, defaulting to `5 km`).
+  * Uses the spherical Great-Circle Haversine formula (`Emergency.distanceTo(lat, lng)`) computed client-side.
+  * Real-time calculation shows precise distance (`86m` or `1.4 km`) and estimated travel time in minutes based on active responder GPS.
+  * Emergencies currently acquiring satellite fixes remain visible so responders can monitor nearby emerging incidents.
+
+### Feature 14: Mutual Live Location Tracking & In-App Dynamic Map
+- **Implementation:** `lib/services/live_location_tracker_service.dart`, `lib/widgets/live_tracking_map.dart`, `lib/screens/active_emergency_screen.dart`, `lib/screens/navigating_to_victim_screen.dart`
+- **Description:** Real-time two-way location tracking when an emergency is accepted:
+  * **Continuous Victim & Responder GPS Streaming:** Uses `Geolocator.getPositionStream` with throttling (3-5 second intervals, 5-meter displacement threshold) to broadcast live coordinates to Cloud Firestore without battery or network drain.
+  * **Mutual In-App Map (`flutter_map` + OpenStreetMap):** Renders OpenStreetMap vector/raster tiles showing:
+    - Red pulsing pin for the victim (`YOU` or `VICTIM`).
+    - Blue directional pin for the primary community responder.
+    - Connecting dashed polyline between victim and responder.
+    - Top floating ETA and distance badge (`Live Proximity: 450 m • ~1 min`).
+    - Floating one-tap recenter button.
+  * **Offline-Resilient Raw Strip:** If map tiles fail to load due to offline or low-bandwidth conditions, a persistent bottom strip displays high-precision raw GPS coordinates (`21.1619, 81.7869`), ensuring responders always have actionable navigation data.
+
 ---
 
 ## 2. Changelog History
+
+### [v1.0.3] — 2026-11-23: Auth Gate, Universal Android Permissions, Range Filtering & Mutual Live Map Tracking
+- **Startup Auth Gate & Real Firebase Routing:** Replaced silent mock fallback in production with a strict `FirebaseAuth.instance.authStateChanges()` gate. `AuthScreen` is displayed on startup unless the user explicitly taps "Continue Offline (Emergency Access)". Added Firebase connection status indicators.
+- **Universal Android Compatibility (API 23 to 34+):** Configured `minSdk = 23` with Core Library Desugaring enabled. Created `PermissionService` (`UniversalPermissionStatus`) dynamically checking OS version, hardware GPS availability, and requesting Bluetooth/Wi-Fi/Notification permissions adaptively without crashes on legacy devices.
+- **Mutual Live Location Tracker Service:** Created `LiveLocationTrackerService` to continuously stream victim and responder GPS updates to Firestore with 3s/5m throttling and single-lifecycle stream management.
+- **Live In-App Map (`LiveTrackingMapWidget`):** Integrated `flutter_map` and `latlong2` OpenStreetMap tiles in `ActiveEmergencyScreen` and `NavigatingToVictimScreen`. Displays victim and responder pins, connecting path, live distance/ETA bar, and raw GPS fallback strip.
+- **Proximity Dispatch Filter (1km, 3km, 5km, 10km):** Implemented Haversine distance calculations and interactive range selector chips in `ResponderAlertsScreen` with real-time distance and estimated response times.
+- **Automated Unit Tests:** Added `test/services/permission_service_test.dart` and `test/services/range_filter_and_tracking_test.dart` validating permission matrix branches, Haversine filtering, and mutual coordinate serialization.
 
 ### [v1.0.2] — 2026-11-23: True Offline Peer-to-Peer (P2P) Emergency HELP Mesh & Cluster Relay
 - **Nearby Connections Engine:** Added `nearby_connections: ^4.3.0` and Android 12+ / legacy Nearby permissions in `AndroidManifest.xml` (`NEARBY_WIFI_DEVICES`, `BLUETOOTH_ADVERTISE`, `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `CHANGE_NETWORK_STATE`).

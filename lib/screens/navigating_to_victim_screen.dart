@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../data/mock_emergency_repository.dart';
 import '../models/emergency.dart';
+import '../services/live_location_tracker_service.dart';
+import '../widgets/live_tracking_map.dart';
 
 /// Clean, Modern Navigating to Victim Screen (Matching Reference Screen)
 class NavigatingToVictimScreen extends StatefulWidget {
@@ -22,11 +25,34 @@ class NavigatingToVictimScreen extends StatefulWidget {
 
 class _NavigatingToVictimScreenState extends State<NavigatingToVictimScreen> {
   late Emergency _currentEmergency;
+  StreamSubscription<Emergency?>? _emergencySub;
 
   @override
   void initState() {
     super.initState();
     _currentEmergency = widget.emergency;
+
+    // Start live responder GPS broadcasting
+    LiveLocationTrackerService.instance.startResponderTracking(
+      emergencyId: widget.emergency.id,
+      repository: widget.repository,
+    );
+
+    // Listen to live updates of the emergency (victim updates, status changes)
+    _emergencySub = widget.repository.watchEmergency(widget.emergency.id).listen((updated) {
+      if (mounted && updated != null) {
+        setState(() {
+          _currentEmergency = updated;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _emergencySub?.cancel();
+    LiveLocationTrackerService.instance.stopResponderTracking();
+    super.dispose();
   }
 
   // Exact Call Victim Dialog from Reference
@@ -196,8 +222,15 @@ class _NavigatingToVictimScreenState extends State<NavigatingToVictimScreen> {
             // 1. TOP TURN-BY-TURN HEADER BAR
             _buildNavigationHeader(),
 
-            // 2. MAP SPLIT VIEW WITH ROUTE & GPS PILL
-            _buildMapSplitView(),
+            // 2. LIVE TRACKING MAP SPLIT VIEW WITH ROUTE & GPS PILL
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: LiveTrackingMapWidget(
+                emergency: _currentEmergency,
+                isUserResponder: true,
+                height: 200,
+              ),
+            ),
 
             // 3. BOTTOM WHITE SHEET
             Expanded(
@@ -455,128 +488,6 @@ class _NavigatingToVictimScreenState extends State<NavigatingToVictimScreen> {
     );
   }
 
-  // Map Split View with Route preview and GPS pill
-  Widget _buildMapSplitView() {
-    return Container(
-      height: 200,
-      width: double.infinity,
-      color: const Color(0xFFF1F3F5),
-      child: Stack(
-        children: [
-          CustomPaint(
-            size: Size.infinite,
-            painter: _RouteMapPainter(),
-          ),
-
-          // Primary Responder Pin
-          Positioned(
-            left: 70,
-            bottom: 60,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.onlineGreen,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text('PRIMARY', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w900, color: Colors.white)),
-                ),
-                const SizedBox(height: 2),
-                Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    color: AppColors.onlineGreen,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                  child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 14),
-                ),
-              ],
-            ),
-          ),
-
-          // Victim Pin
-          Positioned(
-            right: 80,
-            top: 40,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text('VICTIM', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w900, color: Colors.white)),
-                ),
-                const SizedBox(height: 2),
-                Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                  child: const Icon(Icons.person_pin_circle_rounded, color: Colors.white, size: 16),
-                ),
-              ],
-            ),
-          ),
-
-          // Floating Recenter Button
-          Positioned(
-            right: 14,
-            bottom: 14,
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 6),
-                ],
-              ),
-              child: const Icon(Icons.my_location_rounded, size: 18, color: AppColors.officialBlue),
-            ),
-          ),
-
-          // Offline-Safe GPS Coordinate Pill
-          Positioned(
-            left: 14,
-            bottom: 14,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.95),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.gps_fixed_rounded, size: 12, color: AppColors.officialBlue),
-                  const SizedBox(width: 5),
-                  Text(
-                    '${_currentEmergency.latitude.toStringAsFixed(4)}, ${_currentEmergency.longitude.toStringAsFixed(4)} (GPS Active)',
-                    style: AppTheme.tabularNumericStyle.copyWith(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // Nearby Hospitals (Standby) Card
   Widget _buildNearbyHospitalsCard() {
     return Container(
@@ -655,33 +566,5 @@ class _NavigatingToVictimScreenState extends State<NavigatingToVictimScreen> {
       ],
     );
   }
-}
-
-class _RouteMapPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paintRoad = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 10
-      ..style = PaintingStyle.stroke;
-
-    final paintRoute = Paint()
-      ..color = AppColors.officialBlue
-      ..strokeWidth = 4
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    final path = Path()
-      ..moveTo(size.width * 0.25, size.height * 0.7)
-      ..lineTo(size.width * 0.45, size.height * 0.7)
-      ..lineTo(size.width * 0.45, size.height * 0.25)
-      ..lineTo(size.width * 0.75, size.height * 0.25);
-
-    canvas.drawPath(path, paintRoad);
-    canvas.drawPath(path, paintRoute);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 

@@ -12,10 +12,12 @@ import 'main_shell.dart';
 /// Onboarding & Authentication Flow for Vindara
 class AuthScreen extends StatefulWidget {
   final EmergencyRepository repository;
+  final VoidCallback? onOfflineAccess;
 
   const AuthScreen({
     super.key,
     required this.repository,
+    this.onOfflineAccess,
   });
 
   @override
@@ -150,7 +152,11 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   void _continueOfflineAccess() {
-    _navigateToHome();
+    if (widget.onOfflineAccess != null) {
+      widget.onOfflineAccess!();
+    } else {
+      _navigateToHome();
+    }
   }
 
   void _navigateToHome() {

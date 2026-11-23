@@ -77,6 +77,12 @@ abstract class EmergencyRepository {
   /// Toggle current responder's availability to receive nearby broadcasts
   Future<void> updateCurrentUserAvailability(bool isAvailable);
 
+  /// Update victim's live location during active emergency
+  Future<void> updateVictimLocation(String emergencyId, double latitude, double longitude);
+
+  /// Update responder's live location during active response
+  Future<void> updateResponderLocation(String emergencyId, double latitude, double longitude);
+
   /// Release resources
   void dispose();
 }
@@ -462,6 +468,32 @@ class MockEmergencyRepository implements EmergencyRepository {
     _currentUserResponder = _currentUserResponder.copyWith(isAvailable: isAvailable);
     if (!_responderController.isClosed) {
       _responderController.add(_currentUserResponder);
+    }
+  }
+
+  @override
+  Future<void> updateVictimLocation(String emergencyId, double latitude, double longitude) async {
+    final index = _emergencies.indexWhere((e) => e.id == emergencyId);
+    if (index != -1) {
+      _emergencies[index] = _emergencies[index].copyWith(
+        latitude: latitude,
+        longitude: longitude,
+        lastLocationUpdatedAt: DateTime.now().toUtc(),
+      );
+      _emitEmergencies();
+    }
+  }
+
+  @override
+  Future<void> updateResponderLocation(String emergencyId, double latitude, double longitude) async {
+    final index = _emergencies.indexWhere((e) => e.id == emergencyId);
+    if (index != -1) {
+      _emergencies[index] = _emergencies[index].copyWith(
+        responderLatitude: latitude,
+        responderLongitude: longitude,
+        responderLocationUpdatedAt: DateTime.now().toUtc(),
+      );
+      _emitEmergencies();
     }
   }
 

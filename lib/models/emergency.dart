@@ -75,6 +75,12 @@ class Emergency {
   final String? aiContextSummary;    // Apparent situation context estimation
   final List<String> recommendedSkills; // e.g. ['first_aid', 'cpr', 'rescue']
 
+  // Live Location & Mutual Tracking Fields
+  final DateTime? lastLocationUpdatedAt;
+  final double? responderLatitude;
+  final double? responderLongitude;
+  final DateTime? responderLocationUpdatedAt;
+
   const Emergency({
     required this.id,
     required this.victimName,
@@ -100,6 +106,10 @@ class Emergency {
     this.responsivenessScore,
     this.aiContextSummary,
     this.recommendedSkills = const [],
+    this.lastLocationUpdatedAt,
+    this.responderLatitude,
+    this.responderLongitude,
+    this.responderLocationUpdatedAt,
   });
 
   String get effectiveVictimId => victimId ?? id;
@@ -172,6 +182,10 @@ class Emergency {
     double? responsivenessScore,
     String? aiContextSummary,
     List<String>? recommendedSkills,
+    DateTime? lastLocationUpdatedAt,
+    double? responderLatitude,
+    double? responderLongitude,
+    DateTime? responderLocationUpdatedAt,
   }) {
     return Emergency(
       id: id ?? this.id,
@@ -206,8 +220,37 @@ class Emergency {
       responsivenessScore: responsivenessScore ?? this.responsivenessScore,
       aiContextSummary: aiContextSummary ?? this.aiContextSummary,
       recommendedSkills: recommendedSkills ?? this.recommendedSkills,
+      lastLocationUpdatedAt: lastLocationUpdatedAt ?? this.lastLocationUpdatedAt,
+      responderLatitude: responderLatitude ?? this.responderLatitude,
+      responderLongitude: responderLongitude ?? this.responderLongitude,
+      responderLocationUpdatedAt:
+          responderLocationUpdatedAt ?? this.responderLocationUpdatedAt,
     );
   }
+
+  /// Computes Haversine distance from this emergency to a target GPS coordinate in meters
+  double distanceTo(double targetLat, double targetLng) {
+    const double earthRadiusMeters = 6371000.0;
+    final dLat = (targetLat - latitude) * (pi / 180.0);
+    final dLng = (targetLng - longitude) * (pi / 180.0);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(latitude * (pi / 180.0)) *
+            cos(targetLat * (pi / 180.0)) *
+            sin(dLng / 2) *
+            sin(dLng / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadiusMeters * c;
+  }
+
+  /// Distance between victim and active responder in meters, or null if responder location not available
+  double? get distanceToResponderMeters {
+    if (responderLatitude == null || responderLongitude == null) return null;
+    return distanceTo(responderLatitude!, responderLongitude!);
+  }
+
+  /// True if responder live location is actively transmitting
+  bool get hasLiveResponderLocation =>
+      responderLatitude != null && responderLongitude != null;
 
   /// Formatted GPS coordinates for high-contrast tabular readout
   String get formattedCoordinates =>
@@ -256,6 +299,13 @@ class Emergency {
       if (responsivenessScore != null) 'responsivenessScore': responsivenessScore,
       if (aiContextSummary != null) 'aiContextSummary': aiContextSummary,
       if (recommendedSkills.isNotEmpty) 'recommendedSkills': recommendedSkills,
+      if (lastLocationUpdatedAt != null)
+        'lastLocationUpdatedAt': lastLocationUpdatedAt!.toUtc().toIso8601String(),
+      if (responderLatitude != null) 'responderLatitude': responderLatitude,
+      if (responderLongitude != null) 'responderLongitude': responderLongitude,
+      if (responderLocationUpdatedAt != null)
+        'responderLocationUpdatedAt':
+            responderLocationUpdatedAt!.toUtc().toIso8601String(),
     };
   }
 
@@ -307,6 +357,8 @@ class Emergency {
     final createdAt = createdAtStr != null
         ? DateTime.tryParse(createdAtStr)?.toUtc() ?? DateTime.now().toUtc()
         : DateTime.now().toUtc();
+    final lastLocStr = json['lastLocationUpdatedAt'] as String?;
+    final respLocStr = json['responderLocationUpdatedAt'] as String?;
 
     return Emergency(
       id: id,
@@ -334,6 +386,12 @@ class Emergency {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
+      lastLocationUpdatedAt:
+          lastLocStr != null ? DateTime.tryParse(lastLocStr)?.toUtc() : null,
+      responderLatitude: (json['responderLatitude'] as num?)?.toDouble(),
+      responderLongitude: (json['responderLongitude'] as num?)?.toDouble(),
+      responderLocationUpdatedAt:
+          respLocStr != null ? DateTime.tryParse(respLocStr)?.toUtc() : null,
     );
   }
 

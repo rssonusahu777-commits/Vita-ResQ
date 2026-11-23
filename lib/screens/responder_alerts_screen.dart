@@ -5,6 +5,7 @@ import '../core/theme/app_theme.dart';
 import '../data/mock_emergency_repository.dart';
 import '../models/emergency.dart';
 import '../models/responder.dart';
+import '../services/location_service.dart';
 import '../services/offline_p2p_service.dart';
 import 'responder_emergency_detail_screen.dart';
 
@@ -28,11 +29,33 @@ class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
   StreamSubscription<P2pMeshStatus>? _p2pStatusSub;
   P2pMeshStatus _p2pStatus = P2pMeshStatus.idle;
 
+  // Range filter options in kilometers (default 5.0 km)
+  double _selectedRangeKm = 5.0;
+  static const List<double> _rangeOptions = [1.0, 3.0, 5.0, 10.0];
+
+  double? _responderLat;
+  double? _responderLng;
+
   @override
   void initState() {
     super.initState();
     _loadResponder();
     _initP2pListener();
+    _acquireResponderGps();
+  }
+
+  Future<void> _acquireResponderGps() async {
+    try {
+      final fix = await LocationService.acquireBestAvailableFix();
+      if (mounted && fix != null) {
+        setState(() {
+          _responderLat = fix.latitude;
+          _responderLng = fix.longitude;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to acquire responder GPS for distance filter: $e');
+    }
   }
 
   void _initP2pListener() {
@@ -225,9 +248,17 @@ class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
         stream: widget.repository.watchActiveEmergencies(),
         builder: (context, snapshot) {
           final emergencies = snapshot.data ?? [];
-          final activeAlerts = emergencies
+          final allActive = emergencies
               .where((e) => e.status != EmergencyStatus.resolved && e.status != EmergencyStatus.cancelled)
               .toList();
+
+          // Apply range filter if responder coordinates are known
+          final activeAlerts = allActive.where((e) {
+            if (_responderLat == null || _responderLng == null) return true;
+            if (e.latitude == 0.0 && e.longitude == 0.0) return true; // keep GPS-acquiring alerts visible
+            final meters = e.distanceTo(_responderLat!, _responderLng!);
+            return meters <= (_selectedRangeKm * 1000.0);
+          }).toList();
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
@@ -257,7 +288,11 @@ class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
 
               // 2. RESPONDER AVAILABILITY & TRUST CARD
               _buildAvailabilityCard(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+
+              // 2.5 RANGE FILTER SELECTOR
+              _buildRangeFilterSelector(allActive.length, activeAlerts.length),
+              const SizedBox(height: 14),
 
               // 3. NEARBY INCIDENTS SECTION HEADER
               Row(
@@ -292,9 +327,9 @@ class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
                       ),
                     ],
                   ),
-                  const Text(
-                    'Raipur • 5.0 km radius',
-                    style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                  Text(
+                    'Within ${_selectedRangeKm.toStringAsFixed(0)} km radius',
+                    style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -310,6 +345,98 @@ class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
         },
       ),
     );
+  }
+
+  Widget _buildRangeFilterSelector(int totalCount, int filteredCount) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.radar_rounded, size: 16, color: AppColors.officialBlue),
+                  SizedBox(width: 6),
+                  Text(
+                    'Dispatch Range Filter',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                _responderLat != null ? 'GPS Locked' : 'Acquiring GPS...',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: _responderLat != null ? AppColors.onlineGreen : AppColors.warningAmber,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: _rangeOptions.map((range) {
+              final isSelected = _selectedRangeKm == range;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text('${range.toStringAsFixed(0)} km'),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    if (selected) {
+                      setState(() {
+                        _selectedRangeKm = range;
+                      });
+                    }
+                  },
+                  selectedColor: AppColors.officialBlue,
+                  backgroundColor: AppColors.surfaceMuted,
+                  labelStyle: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: isSelected ? Colors.white : AppColors.textSecondary,
+                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  showCheckmark: false,
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDistanceAndEta(Emergency item) {
+    if (_responderLat == null || _responderLng == null) {
+      return 'Calculating...';
+    }
+    if (item.latitude == 0.0 && item.longitude == 0.0) {
+      return 'GPS Acquiring';
+    }
+    final meters = item.distanceTo(_responderLat!, _responderLng!);
+    final String distStr;
+    if (meters < 1000) {
+      distStr = '${meters.round()}m';
+    } else {
+      distStr = '${(meters / 1000.0).toStringAsFixed(1)} km';
+    }
+    // Estimated travel time assuming ~30 km/h average local speed in response
+    final minutes = (meters / 500.0).ceil().clamp(1, 120);
+    return '$distStr • $minutes min';
   }
 
   Widget _buildAvailabilityCard() {
@@ -453,7 +580,7 @@ class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '86m • 1 min',
+                    _formatDistanceAndEta(item),
                     style: const TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,

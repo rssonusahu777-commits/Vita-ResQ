@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import '../core/theme/app_theme.dart';
 import '../data/mock_emergency_repository.dart';
 import '../models/emergency.dart';
+import '../services/live_location_tracker_service.dart';
 import '../services/location_service.dart';
+import '../widgets/live_tracking_map.dart';
 
 /// Clean, Light Theme Live Assistance & Active Emergency Screen
 class ActiveEmergencyScreen extends StatefulWidget {
@@ -24,6 +26,21 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> {
   bool _isDemoExpanded = false;
   bool _isHospitalDirectoryAvailable = true;
   bool _isAcquiringGps = false;
+
+  @override
+  void initState() {
+    super.initState();
+    LiveLocationTrackerService.instance.startVictimTracking(
+      emergencyId: widget.initialEmergency.id,
+      repository: widget.repository,
+    );
+  }
+
+  @override
+  void dispose() {
+    LiveLocationTrackerService.instance.stopVictimTracking();
+    super.dispose();
+  }
 
   void _checkAndAcquireGpsIfNeeded(Emergency emergency) {
     if (emergency.latitude == 0.0 && emergency.longitude == 0.0 && !_isAcquiringGps) {
@@ -200,144 +217,13 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> {
   // Top Map Split View
   Widget _buildTopMapSplitView(Emergency emergency) {
     _checkAndAcquireGpsIfNeeded(emergency);
-    final hasPrimary = emergency.primaryResponder != null;
-    final isGpsZero = emergency.latitude == 0.0 && emergency.longitude == 0.0;
 
-    return Container(
-      height: 190,
-      width: double.infinity,
-      color: const Color(0xFFF1F3F5),
-      child: Stack(
-        children: [
-          // Background Streets
-          CustomPaint(
-            size: Size.infinite,
-            painter: _ActiveMapPainter(),
-          ),
-
-          // Victim Pin (YOU)
-          Positioned(
-            left: 80,
-            top: 75,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Text(
-                    'YOU',
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.white),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(color: AppColors.primaryRed.withValues(alpha: 0.3), blurRadius: 6),
-                    ],
-                  ),
-                  child: const Icon(Icons.person_pin_circle_rounded, color: Colors.white, size: 16),
-                ),
-              ],
-            ),
-          ),
-
-          // Primary Responder Pin
-          if (hasPrimary)
-            Positioned(
-              right: 90,
-              top: 55,
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.onlineGreen,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      'PRIMARY',
-                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: AppColors.onlineGreen,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow: [
-                        BoxShadow(color: AppColors.onlineGreen.withValues(alpha: 0.3), blurRadius: 6),
-                      ],
-                    ),
-                    child: const Icon(Icons.directions_run_rounded, color: Colors.white, size: 16),
-                  ),
-                ],
-              ),
-            ),
-
-          // Bottom Bar: Offline-Safe Raw GPS Coordinates Strip
-          Positioned(
-            bottom: 8,
-            left: 12,
-            right: 12,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.95),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        isGpsZero ? Icons.gps_not_fixed_rounded : Icons.gps_fixed_rounded,
-                        size: 13,
-                        color: isGpsZero ? AppColors.warningAmber : AppColors.officialBlue,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        isGpsZero
-                            ? 'Acquiring Satellite GPS Fix...'
-                            : '${emergency.latitude.toStringAsFixed(4)}, ${emergency.longitude.toStringAsFixed(4)} (GPS Coordinates)',
-                        style: AppTheme.tabularNumericStyle.copyWith(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: isGpsZero ? AppColors.warningAmber : AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    emergency.communicationMode == CommunicationMode.online
-                        ? 'Online (Cloud Dispatch)'
-                        : 'Offline (Peer Mesh Relay)',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w800,
-                      color: emergency.communicationMode == CommunicationMode.online
-                          ? AppColors.onlineGreen
-                          : AppColors.warningAmber,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: LiveTrackingMapWidget(
+        emergency: emergency,
+        isUserResponder: false,
+        height: 200,
       ),
     );
   }
@@ -894,26 +780,4 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> {
       ),
     );
   }
-}
-
-class _ActiveMapPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paintRoad = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 8
-      ..style = PaintingStyle.stroke;
-
-    final paintLine = Paint()
-      ..color = const Color(0xFFE2E8F0)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    canvas.drawLine(Offset(0, size.height * 0.4), Offset(size.width, size.height * 0.4), paintRoad);
-    canvas.drawLine(Offset(size.width * 0.35, 0), Offset(size.width * 0.35, size.height), paintRoad);
-    canvas.drawLine(Offset(0, size.height * 0.7), Offset(size.width, size.height * 0.1), paintLine);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
