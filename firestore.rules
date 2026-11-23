@@ -29,6 +29,7 @@ service cloud.firestore {
       // - victimId MUST match authenticated caller UID (no impersonation)
       // - Emergency ID must match document path
       // - Initial status must be 'SEARCHING' for ordinary online live emergencies
+      // - Stale prevention: Active 'SEARCHING' emergencies must not be older than 10 minutes
       // - Narrow exception: Authenticated victim synchronizing an offline emergency (JS-OFF-*)
       //   that reached a terminal state (COMPLETED or CANCELLED) offline may create directly in that state
       // - Initial radius must be within safety bounds (<= 5000m)
@@ -42,7 +43,10 @@ service cloud.firestore {
         && request.resource.data.longitude >= -180.0 && request.resource.data.longitude <= 180.0
         && request.resource.data.currentRadiusMeters <= 5000.0
         && (
-          request.resource.data.status == 'SEARCHING' ||
+          (
+            request.resource.data.status == 'SEARCHING' &&
+            request.resource.data.createdAt >= request.time - duration.value(10, 'm')
+          ) ||
           (
             emergencyId.matches('^JS-OFF-.*') &&
             request.resource.data.id.matches('^JS-OFF-.*') &&

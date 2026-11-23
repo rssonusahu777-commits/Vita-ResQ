@@ -18,6 +18,7 @@ import '../../services/auth_service.dart';
 import '../../services/local_database_service.dart';
 import '../../services/communication_manager.dart';
 import '../../services/offline_communication_service.dart';
+import '../../services/online_communication_service.dart';
 import '../../services/p2p_diagnostics.dart';
 import '../../widgets/incoming_emergency_card.dart';
 import '../../widgets/common/app_bottom_nav_bar.dart';
@@ -103,6 +104,7 @@ class _ResponderDashboardScreenState extends State<ResponderDashboardScreen>
       _emergencies = widget.initialEmergencies!.where((e) {
         if (e.isTerminal) return false;
         if (e.isOffline && !OfflineCommunicationService.isOfflineAlertFresh(e.createdAt)) return false;
+        if (!e.isOffline && !OnlineCommunicationService.isOnlineAlertFresh(e.createdAt)) return false;
         return true;
       }).toList();
     }
@@ -299,8 +301,12 @@ class _ResponderDashboardScreenState extends State<ResponderDashboardScreen>
               _subscribedAssignedEmergencyId = null;
             }
           } else {
-            // Freshness validation: do not keep stale offline emergency as active opportunity
+            // Freshness validation: do not keep stale offline or online emergency as active opportunity
             if (updated.isOffline && !OfflineCommunicationService.isOfflineAlertFresh(updated.createdAt)) {
+              _emergencies.removeWhere((e) => e.id == updated.id);
+              return;
+            }
+            if (!updated.isOffline && !OnlineCommunicationService.isOnlineAlertFresh(updated.createdAt)) {
               _emergencies.removeWhere((e) => e.id == updated.id);
               return;
             }
@@ -335,9 +341,15 @@ class _ResponderDashboardScreenState extends State<ResponderDashboardScreen>
         final isOwnAuthUser = currentUid != 'offline_user' && em.victimId == currentUid;
         if (isOwnDevice || isOwnAuthUser) continue;
 
-        // Freshness validation: Stale offline emergencies cannot appear as active opportunities
+        // Freshness validation: Stale offline or online emergencies cannot appear as active opportunities
         if (em.isOffline && !OfflineCommunicationService.isOfflineAlertFresh(em.createdAt)) {
           P2PDiagnostics.log(em.id, 'DASHBOARD_DROPPED_STALE', {
+            'ageMinutes': DateTime.now().difference(em.createdAt).inMinutes.abs(),
+          });
+          continue;
+        }
+        if (!em.isOffline && !OnlineCommunicationService.isOnlineAlertFresh(em.createdAt)) {
+          P2PDiagnostics.log(em.id, 'DASHBOARD_DROPPED_STALE_ONLINE', {
             'ageMinutes': DateTime.now().difference(em.createdAt).inMinutes.abs(),
           });
           continue;

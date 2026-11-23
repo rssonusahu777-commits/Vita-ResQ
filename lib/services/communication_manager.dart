@@ -7,6 +7,7 @@ import 'communication_service_interface.dart';
 import 'online_communication_service.dart';
 import 'offline_communication_service.dart';
 import 'local_database_service.dart';
+import 'p2p_diagnostics.dart';
 import '../models/communication_mode.dart';
 import '../models/emergency_model.dart';
 import '../core/constants/app_constants.dart';
@@ -163,6 +164,26 @@ class CommunicationManager {
         }
 
         // Case 3: Authenticated victim emergency synchronization (SEARCHING or Terminal COMPLETED/CANCELLED)
+        // Check for stale offline emergency: if older than 10 minutes (600s) and still SEARCHING,
+        // do NOT upload it as active SEARCHING to Cloud Firestore. Mark it synced locally to preserve
+        // it in local history and log a structured diagnostic entry.
+        final ageSeconds = DateTime.now().difference(emergency.createdAt).inSeconds.abs();
+        if (!emergency.isTerminal && emergency.status == EmergencyStatus.SEARCHING && ageSeconds > 600) {
+          await _localDb.markAsSynced(emergency.id);
+          P2PDiagnostics.log(emergency.id, 'SYNC_SKIPPED_STALE_OFFLINE_ALERT', {
+            'ageSeconds': ageSeconds,
+            'status': emergency.status.name,
+          });
+          unawaited(AnalyticsService.instance.trackOfflineSyncTelemetry(
+            emergencyId: emergency.id,
+            retryCount: 0,
+            syncLatencyMs: DateTime.now().difference(syncStart).inMilliseconds,
+            success: true,
+            terminalStatus: 'STALE_SKIPPED',
+          ));
+          continue;
+        }
+
         final docRef = FirebaseFirestore.instance
             .collection(AppConstants.emergenciesCollection)
             .doc(emergency.id);
@@ -174,7 +195,7 @@ class CommunicationManager {
           // Single-write creation:
           // Completed or cancelled emergencies are created directly in their terminal state
           // under the narrow firestore.rules exception for JS-OFF-* offline emergencies.
-          // Active emergencies are created directly as SEARCHING.
+          // Active emergencies are created directly as SEARCHING (if fresh <= 10 min).
           // In NO CASE is an intermediate SEARCHING document created for an already terminal emergency.
           Map<String, dynamic> createMap = {
             'id': emergency.id,
@@ -200,7 +221,7 @@ class CommunicationManager {
           final remoteData = docSnap.data();
           final remoteStatusStr = remoteData?['status'] as String?;
 
-          // If remote is already terminal (COMPLETED/CANCELLED), do not regress or overwrite
+          // If remote is already terminal (COMPLETED/CANCELLED), do not regress or overwrite back to SEARCHING or any prior state
           if (remoteStatusStr == AppConstants.statusCompleted ||
               remoteStatusStr == AppConstants.statusCancelled) {
             await _localDb.markAsSynced(emergency.id);

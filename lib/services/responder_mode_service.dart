@@ -10,6 +10,7 @@ import 'notification_service.dart';
 import 'location_service.dart';
 import 'communication_manager.dart';
 import 'offline_communication_service.dart';
+import 'online_communication_service.dart';
 import 'local_database_service.dart';
 
 /// Contract for Responder Availability & Background Mode.
@@ -188,13 +189,13 @@ class ResponderModeService implements IResponderModeService {
       }
     } catch (_) {}
 
-    // 5. Skip stale emergencies (60 minutes for offline P2P to absorb device clock skew, 10 min for online)
+    // 5. Skip stale emergencies (60 minutes for offline P2P to absorb device clock skew, strictly 10 min for online)
     if (alert.isOffline) {
       if (!OfflineCommunicationService.isOfflineAlertFresh(alert.createdAt)) {
         return;
       }
     } else {
-      if (DateTime.now().difference(alert.createdAt).inMinutes.abs() > 10) {
+      if (!OnlineCommunicationService.isOnlineAlertFresh(alert.createdAt)) {
         return;
       }
     }
