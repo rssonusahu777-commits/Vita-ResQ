@@ -316,6 +316,53 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                             ),
+                            const SizedBox(height: 16),
+
+                            // Phase 2: Guest / Logged-Out Offline Emergency Access
+                            SizedBox(
+                              width: double.infinity,
+                              height: 48,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(double.infinity, 48),
+                                  side: BorderSide(
+                                    color: AppTheme.primaryRed.withValues(alpha: 0.6),
+                                    width: 1.5,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.emergency_outlined,
+                                  size: 18,
+                                  color: AppTheme.primaryRed,
+                                ),
+                                label: const Text(
+                                  'Continue Offline (Emergency Access)',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.primaryRed,
+                                  ),
+                                ),
+                                onPressed: () async {
+                                  await _authService.enterGuestOfflineMode();
+                                  if (!context.mounted) return;
+                                  AppNavigator.navigateToHome(context);
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Send or receive nearby Bluetooth/Wi-Fi Direct alerts without signing in.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.onSurfaceVariant,
+                                height: 1.3,
+                              ),
+                            ),
                           ],
                         ),
                       ),

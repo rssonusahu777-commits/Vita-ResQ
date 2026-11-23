@@ -93,6 +93,14 @@ class _AppDrawerState extends State<AppDrawer> {
     AppNavigator.navigateToHelplineDirectory(context);
   }
 
+  void _handleSignIn(BuildContext context) async {
+    Navigator.pop(context);
+    await _authService.exitGuestOfflineMode();
+    if (context.mounted) {
+      AppNavigator.navigateToLogin(context);
+    }
+  }
+
   void _handleSignOut(BuildContext context) async {
     final confirm = await AppDialogs.showDestructiveConfirmDialog(
       context: context,
@@ -108,6 +116,7 @@ class _AppDrawerState extends State<AppDrawer> {
       try {
         await _auth?.signOut();
       } catch (_) {}
+      await _authService.exitGuestOfflineMode();
       if (context.mounted) {
         AppNavigator.navigateToLogin(context);
       }
@@ -116,19 +125,24 @@ class _AppDrawerState extends State<AppDrawer> {
 
   @override
   Widget build(BuildContext context) {
+    final isGuest = AuthService.isGuestOfflineSessionSync;
     final user = _auth?.currentUser;
-    final displayName = _profile?.name ?? user?.displayName ?? 'Aayon';
-    final role = _profile?.userRole ?? 'CITIZEN';
+    final displayName = isGuest ? 'Guest User' : (_profile?.name ?? user?.displayName ?? 'Aayon');
+    final role = isGuest ? 'CITIZEN' : (_profile?.userRole ?? 'CITIZEN');
 
-    String roleDisplay = role == 'AMBULANCE_DRIVER'
-        ? 'Ambulance Responder'
-        : role == 'POLICE_PCR'
-            ? 'Police PCR Officer'
-            : 'Citizen Volunteer';
+    String roleDisplay = isGuest
+        ? 'Offline Emergency Access'
+        : (role == 'AMBULANCE_DRIVER'
+            ? 'Ambulance Responder'
+            : role == 'POLICE_PCR'
+                ? 'Police PCR Officer'
+                : 'Citizen Volunteer');
 
-    String initials = displayName.trim().isNotEmpty
-        ? displayName.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase()
-        : 'VR';
+    String initials = isGuest
+        ? 'GU'
+        : (displayName.trim().isNotEmpty
+            ? displayName.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase()
+            : 'VR');
     if (initials.isEmpty) initials = 'VR';
 
     return Drawer(
@@ -297,6 +311,8 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   Widget _buildBottomSignOut(BuildContext context) {
+    final isGuest = AuthService.isGuestOfflineSessionSync;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       decoration: const BoxDecoration(
@@ -309,34 +325,64 @@ class _AppDrawerState extends State<AppDrawer> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildSectionHeader('ACCOUNT'),
-          InkWell(
-            onTap: () => _handleSignOut(context),
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.emergencyLightRed.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.emergencyContainer, width: 1),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.logout_rounded, color: AppColors.emergencyRed, size: 18),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Sign Out',
-                      style: TextStyle(
-                        color: AppColors.emergencyRed,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
+          if (isGuest)
+            InkWell(
+              onTap: () => _handleSignIn(context),
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.softBlue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.softBlue, width: 1),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.login_rounded, color: AppColors.softBlue, size: 18),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Sign In',
+                        style: TextStyle(
+                          color: AppColors.softBlue,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+            )
+          else
+            InkWell(
+              onTap: () => _handleSignOut(context),
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.emergencyLightRed.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.emergencyContainer, width: 1),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.logout_rounded, color: AppColors.emergencyRed, size: 18),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Sign Out',
+                        style: TextStyle(
+                          color: AppColors.emergencyRed,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
           const SizedBox(height: 6),
           const Text(
             'Vita ResQ is a community emergency-response platform and does not replace official emergency services.',

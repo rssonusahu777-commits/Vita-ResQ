@@ -12,6 +12,7 @@ import '../models/communication_mode.dart';
 import '../models/emergency_model.dart';
 import '../core/constants/app_constants.dart';
 import 'analytics_service.dart';
+import 'auth_service.dart';
 
 class CommunicationManager {
   static final CommunicationManager _instance = CommunicationManager._internal();
@@ -28,16 +29,24 @@ class CommunicationManager {
   StreamSubscription<CommunicationMode>? _modeSub;
   bool _isTransitioning = false;
 
-  CommunicationMode get activeMode => _activeMode;
+  CommunicationMode get activeMode =>
+      AuthService.isGuestOfflineSessionSync ? CommunicationMode.offline : _activeMode;
   Stream<CommunicationMode> get modeStream => _connectivityService.modeStream;
 
   void initialize() {
     _connectivityService.initialize();
-    _activeMode = _connectivityService.currentMode;
+    final bool isGuest = AuthService.isGuestOfflineSessionSync;
+    _activeMode = isGuest ? CommunicationMode.offline : _connectivityService.currentMode;
     _updateActiveService(_activeMode);
 
     _modeSub?.cancel();
     _modeSub = _connectivityService.modeStream.listen((newMode) {
+      if (AuthService.isGuestOfflineSessionSync) {
+        if (_activeMode != CommunicationMode.offline) {
+          _updateActiveService(CommunicationMode.offline);
+        }
+        return;
+      }
       if (newMode != _activeMode) {
         _handleModeTransition(_activeMode, newMode);
       }
@@ -55,6 +64,10 @@ class CommunicationManager {
 
   Future<void> _handleModeTransition(
       CommunicationMode oldMode, CommunicationMode newMode) async {
+    if (AuthService.isGuestOfflineSessionSync) {
+      _updateActiveService(CommunicationMode.offline);
+      return;
+    }
     if (_isTransitioning) return;
     _isTransitioning = true;
 
@@ -83,6 +96,13 @@ class CommunicationManager {
     required Position position,
     required String currentUserId,
   }) async {
+    if (AuthService.isGuestOfflineSessionSync) {
+      _updateActiveService(CommunicationMode.offline);
+      return await _offlineService.broadcastSOS(
+        position: position,
+        currentUserId: currentUserId,
+      );
+    }
     return await _activeService!
         .broadcastSOS(position: position, currentUserId: currentUserId);
   }
@@ -92,16 +112,83 @@ class CommunicationManager {
     required double userLon,
     required String currentUserId,
   }) {
+    if (AuthService.isGuestOfflineSessionSync) {
+      _updateActiveService(CommunicationMode.offline);
+      return _offlineService.listenForAlerts(
+        userLat: userLat,
+        userLon: userLon,
+        currentUserId: currentUserId,
+      );
+    }
     if (_activeService == null) {
       _activeMode = _connectivityService.currentMode;
       _updateActiveService(_activeMode);
     }
+
+    if (_activeMode == CommunicationMode.online) {
+      final bool canRelay = currentUserId.isNotEmpty &&
+          currentUserId != 'offline_user' &&
+          !currentUserId.startsWith('offline_guest') &&
+          !AuthService.isGuestOfflineSessionSync;
+
+      late StreamController<List<EmergencyModel>> relayStreamController;
+      StreamSubscription<List<EmergencyModel>>? onlineAlertsSub;
+
+      relayStreamController = StreamController<List<EmergencyModel>>.broadcast(
+        onListen: () {
+          if (canRelay) {
+            _offlineService.startPassiveRelayDiscovery(currentUserId: currentUserId);
+          }
+          onlineAlertsSub = _onlineService
+              .listenForAlerts(
+                userLat: userLat,
+                userLon: userLon,
+                currentUserId: currentUserId,
+              )
+              .listen(
+                (emergencies) {
+                  if (!relayStreamController.isClosed) {
+                    relayStreamController.add(emergencies);
+                  }
+                },
+                onError: (err) {
+                  if (!relayStreamController.isClosed) {
+                    relayStreamController.addError(err);
+                  }
+                },
+              );
+        },
+        onCancel: () {
+          onlineAlertsSub?.cancel();
+          if (canRelay) {
+            _offlineService.stopPassiveRelayDiscovery();
+          }
+        },
+      );
+
+      return relayStreamController.stream;
+    }
+
     return (_activeService ?? _onlineService).listenForAlerts(
         userLat: userLat, userLon: userLon, currentUserId: currentUserId);
   }
 
+  /// Starts passive Nearby Connections discovery strictly to bridge incoming JS-OFF- alerts to Firestore.
+  Future<void> startPassiveRelayDiscovery({required String currentUserId}) async {
+    await _offlineService.startPassiveRelayDiscovery(currentUserId: currentUserId);
+  }
+
+  /// Stops passive Nearby Connections discovery.
+  Future<void> stopPassiveRelayDiscovery() async {
+    await _offlineService.stopPassiveRelayDiscovery();
+  }
+
   /// Safely upload unsynchronized offline emergency records to Firestore
   Future<void> syncOfflineEmergencyToFirestore() async {
+    // In guest offline mode, strictly skip Firestore sync
+    if (AuthService.isGuestOfflineSessionSync) {
+      return;
+    }
     List<EmergencyModel> unsynced = await _localDb.getUnsyncedEmergencies();
     final authUser = FirebaseAuth.instance.currentUser;
 

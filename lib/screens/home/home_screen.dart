@@ -221,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     _locationSubscription?.cancel();
-    _locationSubscription = _locationService.onPositionChanged.listen((updatedPos) {
+    _locationSubscription = _locationService.onPositionChanged.listen((updatedPos) async {
       if (mounted) {
         final wasNull = _currentPosition == null;
         setState(() {
@@ -229,7 +229,12 @@ class _HomeScreenState extends State<HomeScreen> {
           _isLoadingLocation = false;
         });
         if (wasNull) {
-          _listenToAlerts(updatedPos.latitude, updatedPos.longitude, _auth?.currentUser?.uid ?? 'offline_user');
+          final uid = AuthService.isGuestOfflineSessionSync
+              ? 'offline_guest_${await LocalDatabaseService.getOrCreateLocalDeviceId()}'
+              : (_auth?.currentUser?.uid ?? 'offline_user');
+          if (mounted) {
+            _listenToAlerts(updatedPos.latitude, updatedPos.longitude, uid);
+          }
         }
       }
     });
@@ -237,7 +242,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _locationService.startLocationUpdates();
 
     if (pos != null) {
-      _listenToAlerts(pos.latitude, pos.longitude, _auth?.currentUser?.uid ?? 'offline_user');
+      final uid = AuthService.isGuestOfflineSessionSync
+          ? 'offline_guest_${await LocalDatabaseService.getOrCreateLocalDeviceId()}'
+          : (_auth?.currentUser?.uid ?? 'offline_user');
+      _listenToAlerts(pos.latitude, pos.longitude, uid);
     }
   }
 
@@ -340,9 +348,13 @@ class _HomeScreenState extends State<HomeScreen> {
         speedAccuracy: 0.0,
       );
 
+      final currentUserId = AuthService.isGuestOfflineSessionSync
+          ? 'offline_guest_${await LocalDatabaseService.getOrCreateLocalDeviceId()}'
+          : (_auth?.currentUser?.uid ?? 'offline_user');
+
       String emergencyId = await _communicationManager.broadcastSOS(
         position: pos,
-        currentUserId: _auth?.currentUser?.uid ?? 'offline_user',
+        currentUserId: currentUserId,
       );
       _alertedEmergencyIds.add(emergencyId);
       EmergencySoundService.playSOSSentSound();
@@ -645,6 +657,32 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (AuthService.isGuestOfflineSessionSync) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: AppColors.subtleBlueGray,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.borderSubtle, width: 1),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.person_outline_rounded, size: 9, color: AppColors.textSecondary),
+                          SizedBox(width: 2),
+                          Text(
+                            'Guest Offline',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   if (_accidentDetectionService.isEnabled) ...[
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
@@ -1261,9 +1299,12 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    bool isOnline = _currentMode == CommunicationMode.online;
-    String userName = _userProfile?.name ?? _auth?.currentUser?.displayName ?? 'Community Volunteer';
-    String roleLabel = _userProfile?.userRole ?? 'CITIZEN';
+    final bool isGuest = AuthService.isGuestOfflineSessionSync;
+    bool isOnline = !isGuest && _currentMode == CommunicationMode.online;
+    String userName = isGuest
+        ? 'Offline Guest'
+        : (_userProfile?.name ?? _auth?.currentUser?.displayName ?? 'Community Volunteer');
+    String roleLabel = isGuest ? 'CITIZEN' : (_userProfile?.userRole ?? 'CITIZEN');
 
     return Scaffold(
       backgroundColor: AppColors.warmOffWhite,

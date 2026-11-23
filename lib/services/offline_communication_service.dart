@@ -7,6 +7,7 @@ import 'notification_service.dart';
 import 'p2p_diagnostics.dart';
 import '../models/emergency_model.dart';
 import 'analytics_service.dart';
+import 'community_relay_service.dart';
 
 class OfflineCommunicationService implements ICommunicationService {
   final OfflineNearbyService _nearbyService;
@@ -236,6 +237,15 @@ class OfflineCommunicationService implements ICommunicationService {
             );
             P2PDiagnostics.log(id, 'NOTIFICATION_TRIGGERED', {'status': emergency.status.name});
           }
+
+          // Community Relay: Attempt 1-hop cloud bridge if eligible AFTER local DB persistence and notification
+          try {
+            unawaited(CommunityRelayService().relayOfflineAlertIfEligible(
+              alert: emergency,
+              rawPayload: data,
+              currentUserId: currentUserId,
+            ).catchError((_) => false));
+          } catch (_) {}
         }
       },
     );
@@ -247,5 +257,55 @@ class OfflineCommunicationService implements ICommunicationService {
   Future<void> stop() async {
     _notifiedEmergencyIds.clear();
     await _nearbyService.stopAll();
+  }
+
+  /// Starts passive Nearby Connections discovery strictly to bridge incoming JS-OFF- alerts to Firestore.
+  /// Ref-counted via OfflineNearbyService.startSOSDiscovery / stopSOSDiscovery.
+  Future<void> startPassiveRelayDiscovery({
+    required String currentUserId,
+  }) async {
+    await _nearbyService.startSOSDiscovery(
+      currentUserId: currentUserId,
+      onSOSDiscovered: (data) async {
+        if (data.containsKey('emergencyId')) {
+          final String emId = data['emergencyId']?.toString() ?? '';
+          if (emId.startsWith('JS-OFF-')) {
+            final rawTimestamp = data['timestamp'];
+            final createdAt = (rawTimestamp is num && rawTimestamp > 0)
+                ? DateTime.fromMillisecondsSinceEpoch(rawTimestamp.toInt())
+                : DateTime.now();
+
+            final alert = EmergencyModel(
+              id: emId,
+              victimId: data['victimId']?.toString() ?? '',
+              originDeviceId: data['originDeviceId']?.toString(),
+              type: data['type']?.toString() ?? 'MEDICAL',
+              latitude: (data['latitude'] as num?)?.toDouble() ?? 0.0,
+              longitude: (data['longitude'] as num?)?.toDouble() ?? 0.0,
+              status: EmergencyStatus.SEARCHING,
+              createdAt: createdAt,
+              updatedAt: DateTime.now(),
+            );
+
+            // Persist locally for immediate awareness
+            await _localDb.saveEmergencyLocally(alert);
+
+            // Forward to CommunityRelayService safely
+            try {
+              await CommunityRelayService().relayOfflineAlertIfEligible(
+                alert: alert,
+                rawPayload: data,
+                currentUserId: currentUserId,
+              ).catchError((_) => false);
+            } catch (_) {}
+          }
+        }
+      },
+    );
+  }
+
+  /// Decrement passive discovery subscriber count and stop discovery if no subscribers remain.
+  Future<void> stopPassiveRelayDiscovery() async {
+    await _nearbyService.stopSOSDiscovery();
   }
 }

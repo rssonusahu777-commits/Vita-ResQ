@@ -54,6 +54,21 @@ service cloud.firestore {
           )
         );
 
+      // 1.1 Community Cloud Gateway Relay:
+      // Authenticated bystanders bridging a fresh offline emergency (JS-OFF-*) to Cloud Firestore
+      allow create: if request.auth != null
+        && emergencyId.matches('^JS-OFF-.*')
+        && request.resource.data.id == emergencyId
+        && request.resource.data.isRelayedOffline == true
+        && request.resource.data.relayedByUid == request.auth.uid
+        && request.resource.data.status == 'SEARCHING'
+        && request.resource.data.currentRadiusMeters <= 5000.0
+        && request.resource.data.createdAt >= request.time - duration.value(10, 'm')
+        && request.resource.data.latitude is number
+        && request.resource.data.latitude >= -90.0 && request.resource.data.latitude <= 90.0
+        && request.resource.data.longitude is number
+        && request.resource.data.longitude >= -180.0 && request.resource.data.longitude <= 180.0;
+
       // 2. Emergency State Updates:
       // - Victim can update location, cancel emergency, or update radius
       // - Responders can claim emergency (add themselves to responders map)

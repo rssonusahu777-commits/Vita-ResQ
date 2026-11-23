@@ -26,6 +26,8 @@ class EmergencyModel {
   final DateTime updatedAt;
   final Map<String, dynamic>? lastVictimLocation;
   final Map<String, dynamic>? lastHelperLocation;
+  final bool isRelayedOffline;
+  final String? relayedByUid;
 
   EmergencyModel({
     required this.id,
@@ -43,6 +45,8 @@ class EmergencyModel {
     required this.updatedAt,
     this.lastVictimLocation,
     this.lastHelperLocation,
+    this.isRelayedOffline = false,
+    this.relayedByUid,
   });
 
   bool get isOffline => id.startsWith('JS-OFF-');
@@ -146,6 +150,53 @@ class EmergencyModel {
       lastHelperLocation: map['lastHelperLocation'] is Map
           ? Map<String, dynamic>.from(map['lastHelperLocation'])
           : null,
+      isRelayedOffline: map['isRelayedOffline'] == true,
+      relayedByUid: map['relayedByUid']?.toString(),
+    );
+  }
+
+  factory EmergencyModel.fromJson(Map<String, dynamic> json, [String? id]) =>
+      EmergencyModel.fromMap(json, id ?? json['id']?.toString() ?? '');
+
+  Map<String, dynamic> toJson() => toMap();
+
+  EmergencyModel copyWith({
+    String? id,
+    String? victimId,
+    String? originDeviceId,
+    String? type,
+    double? latitude,
+    double? longitude,
+    EmergencyStatus? status,
+    String? helperId,
+    double? currentRadiusMeters,
+    List<String>? notifiedUserIds,
+    Map<String, ResponderModel>? responders,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Map<String, dynamic>? lastVictimLocation,
+    Map<String, dynamic>? lastHelperLocation,
+    bool? isRelayedOffline,
+    String? relayedByUid,
+  }) {
+    return EmergencyModel(
+      id: id ?? this.id,
+      victimId: victimId ?? this.victimId,
+      originDeviceId: originDeviceId ?? this.originDeviceId,
+      type: type ?? this.type,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      status: status ?? this.status,
+      helperId: helperId ?? this.helperId,
+      currentRadiusMeters: currentRadiusMeters ?? this.currentRadiusMeters,
+      notifiedUserIds: notifiedUserIds ?? this.notifiedUserIds,
+      responders: responders ?? this.responders,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      lastVictimLocation: lastVictimLocation ?? this.lastVictimLocation,
+      lastHelperLocation: lastHelperLocation ?? this.lastHelperLocation,
+      isRelayedOffline: isRelayedOffline ?? this.isRelayedOffline,
+      relayedByUid: relayedByUid ?? this.relayedByUid,
     );
   }
 
@@ -171,6 +222,8 @@ class EmergencyModel {
       'updatedAt': Timestamp.fromDate(updatedAt),
       'lastVictimLocation': lastVictimLocation,
       'lastHelperLocation': lastHelperLocation,
+      'isRelayedOffline': isRelayedOffline,
+      if (relayedByUid != null) 'relayedByUid': relayedByUid,
     };
   }
 

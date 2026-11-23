@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../core/constants/app_constants.dart';
+import 'local_database_service.dart';
 import 'responder_mode_service.dart';
 
 class AuthService {
@@ -19,7 +20,67 @@ class AuthService {
   FirebaseFirestore get _firestore => _injectedFirestore ?? FirebaseFirestore.instance;
 
   static const String _localUserKey = 'local_user_profile_v2';
+  static const String _guestOfflineKey = 'guest_offline_session_v1';
   static UserModel? _cachedLocalUser;
+  static bool? _cachedGuestOfflineSession;
+
+  /// Whether current session is in guest / logged-out offline emergency access mode.
+  static Future<bool> isGuestOfflineSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final val = prefs.getBool(_guestOfflineKey) ?? false;
+      _cachedGuestOfflineSession = val;
+      return val;
+    } catch (_) {
+      return _cachedGuestOfflineSession ?? false;
+    }
+  }
+
+  /// Synchronous quick check for cached guest offline status (false if unset)
+  static bool get isGuestOfflineSessionSync => _cachedGuestOfflineSession ?? false;
+
+  /// Resets in-memory cached state (used in unit tests)
+  static void resetCacheForTesting() {
+    _cachedLocalUser = null;
+    _cachedGuestOfflineSession = null;
+  }
+
+  /// Enters guest offline emergency access mode:
+  /// - Sets isolated guest session flag.
+  /// - Does NOT modify or contaminate `local_user_profile_v2`.
+  /// - Returns a deterministic guest ID: `offline_guest_<originDeviceId>`.
+  Future<String> enterGuestOfflineMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_guestOfflineKey, true);
+    _cachedGuestOfflineSession = true;
+
+    final deviceId = await LocalDatabaseService.getOrCreateLocalDeviceId();
+    return 'offline_guest_$deviceId';
+  }
+
+  /// Exits guest offline emergency access mode cleanly.
+  Future<void> exitGuestOfflineMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_guestOfflineKey);
+    } catch (_) {}
+    _cachedGuestOfflineSession = false;
+  }
+
+  /// Returns the current effective user ID:
+  /// - Firebase user UID if logged in.
+  /// - `offline_guest_<originDeviceId>` if in guest offline mode.
+  /// - 'offline_user' as fallback.
+  Future<String> getEffectiveUserId() async {
+    final user = currentUser;
+    if (user != null) return user.uid;
+    final isGuest = await isGuestOfflineSession();
+    if (isGuest) {
+      final deviceId = await LocalDatabaseService.getOrCreateLocalDeviceId();
+      return 'offline_guest_$deviceId';
+    }
+    return 'offline_user';
+  }
 
   User? get currentUser {
     try {
