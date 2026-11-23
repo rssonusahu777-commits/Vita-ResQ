@@ -367,6 +367,32 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> {
                 ),
               ),
             ),
+            if (emergency.communicationMode == CommunicationMode.offlineNearby) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4.5),
+                decoration: BoxDecoration(
+                  color: AppColors.orangeLight,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.sensors_rounded, size: 12, color: AppColors.warningAmber),
+                    SizedBox(width: 4),
+                    Text(
+                      'P2P MESH BROADCASTING',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.4,
+                        color: AppColors.warningAmber,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 6),

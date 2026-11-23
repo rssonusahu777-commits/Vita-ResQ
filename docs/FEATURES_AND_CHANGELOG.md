@@ -63,9 +63,24 @@
 - **Implementation:** `lib/screens/auth_screen.dart`, `lib/screens/profile_screen.dart`, `lib/services/local_emergency_store.dart`
 - **Description:** Transparent user consent during onboarding and profile settings. Users choose "Enable Now" or "Skip for Now" for emergency condition and skill-matching analysis. Zero runtime popups interrupt a live emergency, and user preferences persist locally in `LocalEmergencyStore`.
 
+### Feature 11: True Offline Peer-to-Peer (P2P) Emergency HELP Mesh (`nearby_connections`)
+- **Implementation:** `lib/services/offline_p2p_service.dart`, `nearby_connections` package (`Strategy.P2P_CLUSTER`).
+- **Architectural Rules:** Rule #1 (Offline-First), Rule #2 (Raw GPS preservation), Rule #4 (Source of truth & Firestore sync), Rule #6 (Single-lifecycle subscriptions), Rule #7 (Deduplication by `emergencyId`), Rule #8 (Hive local-first persistence with `SyncStatus.pending`), Rule #10 (Zero "SOS" labels; honest HELP framing).
+- **Description:** True device-to-device offline mesh network operating over Bluetooth Low Energy (BLE) and Wi-Fi Direct using Nearby Connections `Strategy.P2P_CLUSTER`. When a victim or citizen dispatches a HELP request without cellular coverage or active Wi-Fi, the alert is converted into a compact binary JSON payload and broadcast directly to nearby peers within radio range (~100m). Discovered peer devices automatically establish connections, accept incoming packets, deduplicate by `emergencyId` using an in-memory hash set, and persist the emergency into local Hive storage tagged as `SyncStatus.pending`.
+- **Hybrid Cloud Relay:** If any peer receiving the offline P2P emergency alert has active internet reachability (verified via `ConnectivityService`), that peer acts as a community gateway, automatically syncing the emergency to Cloud Firestore (`FirestoreEmergencyService.upsertEmergency`) and marking it synced locally.
+- **Privacy & Lightweight Radios:** The P2P byte payload is strictly constrained to emergency coordinates, victim details, type, apparent severity, and recommended responder skills (`cpr`, `first_aid`), completely omitting heavy media (audio/camera buffers) to guarantee rapid packet delivery and maintain victim privacy.
+
 ---
 
 ## 2. Changelog History
+
+### [v1.0.2] — 2026-11-23: True Offline Peer-to-Peer (P2P) Emergency HELP Mesh & Cluster Relay
+- **Nearby Connections Engine:** Added `nearby_connections: ^4.3.0` and Android 12+ / legacy Nearby permissions in `AndroidManifest.xml` (`NEARBY_WIFI_DEVICES`, `BLUETOOTH_ADVERTISE`, `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `CHANGE_NETWORK_STATE`).
+- **P2P Service Architecture:** Created `OfflineP2pService` and `P2pHelpPayload` with binary serialization/deserialization, `NearbyClient` interface and `DefaultNearbyClient` / `MockNearbyClient` for testability without native channels.
+- **Auto-Handshake & Cluster Mesh:** Implemented `Strategy.P2P_CLUSTER` multi-peer mesh with auto-accept handshakes, packet deduplication by `emergencyId`, local-first Hive storage (`SyncStatus.pending`), and real-time UI stream notification.
+- **Community Cloud Gateway Relay:** Configured automatic Firestore sync hook when an offline P2P alert is received by an online device, seamlessly bridging disconnected victims to cloud responders.
+- **UI P2P Indicators:** Added real-time P2P status indicators and listener subscriptions across `SosHubScreen`, `ActiveEmergencyScreen`, and `ResponderAlertsScreen` displaying "Offline P2P Mesh Ready", "Broadcasting HELP Nearby", and "Nearby HELP Received via P2P".
+- **Comprehensive Unit Tests:** Created `test/services/offline_p2p_service_test.dart` validating payload encoding, zero raw media buffers, deduplication, cloud relay, and mesh lifecycle.
 
 ### [v1.0.1] — 2026-11-23: Live Firebase Sync, Real GPS Fallback, Profile Dynamic Stats & Zero SOS Purge
 - **Live Firebase Integration:** Connected `vindara-d3d93` credentials (`AIzaSyCpw7Qwe5S_VX-x3VOwkFKGwj-MAfnt5Is`) directly across Android, Web, and iOS configurations in `lib/firebase_options.dart`.

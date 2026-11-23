@@ -9,6 +9,7 @@ import '../models/user_profile.dart';
 import '../services/connectivity_service.dart';
 import '../services/firestore_emergency_service.dart';
 import '../services/local_emergency_store.dart';
+import '../services/offline_p2p_service.dart';
 import '../services/sync_service.dart';
 import 'mock_emergency_repository.dart';
 
@@ -61,6 +62,15 @@ class FirebaseEmergencyRepository implements EmergencyRepository {
           connectivityService: _connectivityService!,
         );
         await _syncService!.init();
+
+        OfflineP2pService.instance.configureDependencies(
+          localStore: _localStore,
+          firestoreService: _firestoreService,
+          connectivityService: _connectivityService,
+        );
+        OfflineP2pService.instance.incomingHelpAlertsStream.listen((p2pEmergency) {
+          _fallbackRepo.updateEmergency(p2pEmergency);
+        });
 
         _bindFirestoreListener();
       }
@@ -214,6 +224,14 @@ class FirebaseEmergencyRepository implements EmergencyRepository {
     }
 
     await _fallbackRepo.updateEmergency(emergency);
+
+    // Broadcast over Offline Nearby P2P Mesh (cluster)
+    try {
+      OfflineP2pService.instance.broadcastHelpEmergency(emergency);
+    } catch (e) {
+      debugPrint('P2P broadcast dispatch warning: $e');
+    }
+
     return emergency;
   }
 

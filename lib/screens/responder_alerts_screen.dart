@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/theme/app_theme.dart';
 import '../data/mock_emergency_repository.dart';
 import '../models/emergency.dart';
 import '../models/responder.dart';
+import '../services/offline_p2p_service.dart';
 import 'responder_emergency_detail_screen.dart';
 
 /// Nearby Emergency Alerts & Responder Queue Screen
@@ -22,11 +24,37 @@ class ResponderAlertsScreen extends StatefulWidget {
 class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
   bool _isAvailable = true;
   Responder? _currentResponder;
+  StreamSubscription<Emergency>? _p2pAlertSub;
+  StreamSubscription<P2pMeshStatus>? _p2pStatusSub;
+  P2pMeshStatus _p2pStatus = P2pMeshStatus.idle;
 
   @override
   void initState() {
     super.initState();
     _loadResponder();
+    _initP2pListener();
+  }
+
+  void _initP2pListener() {
+    _p2pStatus = OfflineP2pService.instance.currentStatus;
+    _p2pStatusSub = OfflineP2pService.instance.statusStream.listen((status) {
+      if (mounted) setState(() => _p2pStatus = status);
+    });
+    _p2pAlertSub = OfflineP2pService.instance.incomingHelpAlertsStream.listen((alert) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      _showSimulatedPushNotification(alert);
+    });
+    OfflineP2pService.instance.startDiscovery().catchError((e) {
+      debugPrint('ResponderAlerts P2P discovery auto-start error: $e');
+    });
+  }
+
+  @override
+  void dispose() {
+    _p2pAlertSub?.cancel();
+    _p2pStatusSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadResponder() async {
@@ -143,6 +171,54 @@ class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
             letterSpacing: -0.2,
           ),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _p2pStatus == P2pMeshStatus.alertReceived
+                      ? AppColors.primaryRedLight
+                      : AppColors.blueLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _p2pStatus == P2pMeshStatus.alertReceived
+                        ? AppColors.primaryRed.withValues(alpha: 0.4)
+                        : AppColors.officialBlue.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _p2pStatus == P2pMeshStatus.alertReceived
+                          ? Icons.crisis_alert_rounded
+                          : Icons.bluetooth_searching_rounded,
+                      size: 13,
+                      color: _p2pStatus == P2pMeshStatus.alertReceived
+                          ? AppColors.primaryRed
+                          : AppColors.officialBlue,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _p2pStatus == P2pMeshStatus.alertReceived
+                          ? 'P2P Alert Received'
+                          : 'P2P Mesh Ready',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: _p2pStatus == P2pMeshStatus.alertReceived
+                            ? AppColors.primaryRed
+                            : AppColors.officialBlue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: StreamBuilder<List<Emergency>>(
         stream: widget.repository.watchActiveEmergencies(),

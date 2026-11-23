@@ -6,6 +6,7 @@ import '../data/mock_emergency_repository.dart';
 import '../models/emergency.dart';
 import '../services/connectivity_service.dart';
 import '../services/location_service.dart';
+import '../services/offline_p2p_service.dart';
 import 'active_emergency_screen.dart';
 import 'crash_detection_screen.dart';
 import 'responder_alerts_screen.dart';
@@ -41,6 +42,9 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
   double _currentLongitude = 81.7869;
   String _currentLocationLabel = 'Sector 4, Community Axis, Raipur / Central Hub';
   StreamSubscription<bool>? _connectivitySub;
+  StreamSubscription<P2pMeshStatus>? _p2pStatusSub;
+  StreamSubscription<Emergency>? _p2pAlertsSub;
+  P2pMeshStatus _p2pStatus = P2pMeshStatus.idle;
 
   // HELP button press & hold state
   late final AnimationController _holdController;
@@ -53,6 +57,7 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
 
     _initGps();
     _initConnectivity();
+    _initP2pMesh();
 
     // 2-second hold controller for tactile HELP press
     _holdController = AnimationController(
@@ -106,9 +111,48 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
     });
   }
 
+  void _initP2pMesh() {
+    _p2pStatus = OfflineP2pService.instance.currentStatus;
+    _p2pStatusSub = OfflineP2pService.instance.statusStream.listen((status) {
+      if (mounted) {
+        setState(() => _p2pStatus = status);
+      }
+    });
+    _p2pAlertsSub = OfflineP2pService.instance.incomingHelpAlertsStream.listen((alert) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.primaryRed,
+          duration: const Duration(seconds: 5),
+          content: Text('Nearby HELP Received via P2P Mesh: ${alert.victimName}'),
+          action: SnackBarAction(
+            textColor: Colors.white,
+            label: 'VIEW',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (ctx) => ActiveEmergencyScreen(
+                    initialEmergency: alert,
+                    repository: widget.repository,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    });
+    OfflineP2pService.instance.startDiscovery().catchError((e) {
+      debugPrint('SosHub P2P discovery auto-start error: $e');
+    });
+  }
+
   @override
   void dispose() {
     _connectivitySub?.cancel();
+    _p2pStatusSub?.cancel();
+    _p2pAlertsSub?.cancel();
     _holdController.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -984,8 +1028,76 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
                 ),
               ),
             ),
+
+            // Bottom-Right: Offline P2P Mesh Indicator (Feature 11)
+            Positioned(
+              bottom: 12,
+              right: 12,
+              child: _buildP2pStatusChip(),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildP2pStatusChip() {
+    String label;
+    Color color;
+    IconData icon;
+    switch (_p2pStatus) {
+      case P2pMeshStatus.broadcasting:
+        label = 'Broadcasting HELP';
+        color = AppColors.primaryRed;
+        icon = Icons.sensors_rounded;
+        break;
+      case P2pMeshStatus.alertReceived:
+        label = 'Nearby HELP Received';
+        color = AppColors.primaryRed;
+        icon = Icons.crisis_alert_rounded;
+        break;
+      case P2pMeshStatus.connected:
+        label = 'P2P Connected';
+        color = AppColors.onlineGreen;
+        icon = Icons.hub_rounded;
+        break;
+      case P2pMeshStatus.advertising:
+      case P2pMeshStatus.discovering:
+      case P2pMeshStatus.idle:
+      default:
+        label = 'Offline P2P Mesh Ready';
+        color = AppColors.officialBlue;
+        icon = Icons.bluetooth_searching_rounded;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import '../models/emergency.dart';
 import '../models/responder.dart';
+import '../services/offline_p2p_service.dart';
 
 /// Abstract contract for Emergency data operations.
 /// Backend engineers can implement this with Firebase (Firestore, Auth, FCM)
@@ -103,6 +105,13 @@ class MockEmergencyRepository implements EmergencyRepository {
     _emergenciesController = StreamController<List<Emergency>>.broadcast();
     _responderController = StreamController<Responder>.broadcast();
     _seedInitialData();
+    OfflineP2pService.instance.incomingHelpAlertsStream.listen((p2pEmergency) {
+      final index = _emergencies.indexWhere((e) => e.id == p2pEmergency.id);
+      if (index == -1) {
+        _emergencies.insert(0, p2pEmergency);
+        _emitEmergencies();
+      }
+    });
   }
 
   void _seedInitialData() {
@@ -247,6 +256,14 @@ class MockEmergencyRepository implements EmergencyRepository {
 
     _emergencies.insert(0, emergency);
     _emitEmergencies();
+
+    // Broadcast over Offline Nearby P2P Mesh (cluster)
+    try {
+      OfflineP2pService.instance.broadcastHelpEmergency(emergency);
+    } catch (e) {
+      debugPrint('MockEmergencyRepo P2P broadcast warning: $e');
+    }
+
     return emergency;
   }
 
