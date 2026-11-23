@@ -112,6 +112,7 @@ class LocalEmergencyStore {
 
   /// Opens Hive boxes. Must be awaited before any other method is called.
   Future<void> init() async {
+    await Hive.initFlutter();
     _emergenciesBox = await Hive.openBox(_HiveKeys.emergenciesBox);
     _metaBox = await Hive.openBox(_HiveKeys.metaBox);
   }

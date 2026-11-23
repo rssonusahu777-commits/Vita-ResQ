@@ -23,12 +23,10 @@ class SyncService {
   bool _isSyncing = false;
 
   SyncService({
-    required LocalEmergencyStore localStore,
-    required FirestoreEmergencyService firestoreService,
-    required ConnectivityService connectivityService,
-  })  : _localStore = localStore,
-        _firestoreService = firestoreService,
-        _connectivityService = connectivityService;
+    required this._localStore,
+    required this._firestoreService,
+    required this._connectivityService,
+  });
 
   /// Initializes listening to connectivity transitions to trigger sync.
   Future<void> init() async {

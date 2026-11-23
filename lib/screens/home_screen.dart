@@ -1,330 +1,378 @@
-// lib/screens/home_screen.dart
-//
-// Vindara — Home Screen & HELP Emergency Trigger
-// Package: com.vindara.app
-//
-// Design rules followed:
-//   Rule #1 — Live reachability pill (isOnlineStreamProvider).
-//   Rule #2 — GPS captured directly without online map tiles.
-//   Rule #7 — Generates EMG-2026-XXXXXXXX.
-//   Rule #8 — Local write first, immediate cloud sync.
-//   UX Rule — NEVER use "SOS" in user-facing strings; use "HELP".
-//             Prominent "Call 112" official emergency layer.
-
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
-
+import '../core/constants/app_constants.dart';
+import '../core/theme/app_theme.dart';
+import '../data/mock_emergency_repository.dart';
 import '../models/emergency.dart';
-import '../providers/providers.dart';
-import '../theme/vindara_theme.dart';
+import '../models/responder.dart';
+import '../widgets/emergency_card.dart';
 
-class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({super.key});
+/// Primary Home Screen for Vindara Community Emergency Response Platform
+class HomeScreen extends StatefulWidget {
+  final EmergencyRepository repository;
+
+  const HomeScreen({
+    super.key,
+    required this.repository,
+  });
 
   @override
-  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen>
-    with SingleTickerProviderStateMixin {
-  bool _isTriggering = false;
-  Timer? _holdTimer;
-  double _holdProgress = 0.0;
-  AnimationController? _pulseController;
+class _HomeScreenState extends State<HomeScreen> {
+  EmergencyType? _selectedFilterType;
+  bool _filterCriticalOnly = false;
+  late Responder _currentUser;
+  bool _isLoadingUser = true;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
+    _loadCurrentUser();
   }
 
-  @override
-  void dispose() {
-    _holdTimer?.cancel();
-    _pulseController?.dispose();
-    super.dispose();
+  Future<void> _loadCurrentUser() async {
+    final responder = await widget.repository.getCurrentUserResponder();
+    if (mounted) {
+      setState(() {
+        _currentUser = responder;
+        _isLoadingUser = false;
+      });
+    }
+  }
+
+  void _showHotlineDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.border),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.phone_in_talk_rounded, color: AppColors.info),
+            SizedBox(width: 10),
+            Text('Official Emergency 112'),
+          ],
+        ),
+        content: const Text(
+          'Connecting to National Emergency Helpline (112). In a live deployment, this dials the verified public safety answering point (PSAP).',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('DISMISS', style: TextStyle(color: AppColors.textTertiary)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Simulated dialing 112 emergency hotline.'),
+                  backgroundColor: AppColors.info,
+                ),
+              );
+            },
+            icon: const Icon(Icons.call_rounded, size: 16),
+            label: const Text('CALL 112 NOW'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.info,
+              minimumSize: const Size(120, 44),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _simulateNewEmergency() async {
+    final types = [
+      EmergencyType.roadAccident,
+      EmergencyType.medical,
+      EmergencyType.personalSafety,
+      EmergencyType.fire,
+    ];
+    final randomType = types[(DateTime.now().second) % types.length];
+    final isCrash = randomType == EmergencyType.roadAccident;
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    await widget.repository.createEmergency(
+      victimName: 'Citizen ${DateTime.now().second}',
+      latitude: 12.9716 + (DateTime.now().millisecond % 50) * 0.001,
+      longitude: 77.5946 + (DateTime.now().millisecond % 50) * 0.001,
+      locationLabel: 'MG Road Metro Station, Bengaluru',
+      type: randomType,
+      detectionSource: isCrash ? DetectionSource.possibleCrash : DetectionSource.manualSos,
+      communicationMode: CommunicationMode.online,
+      notes: isCrash
+          ? 'Automated accelerometer spike: Severe crash impact profile.'
+          : 'User triggered manual panic button with live location broadcast.',
+    );
+
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('New ${randomType.name} alert dispatched to community network!'),
+        backgroundColor: AppColors.criticalDanger,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isOnlineAsync = ref.watch(isOnlineStreamProvider);
-    final isOnline = isOnlineAsync.valueOrNull ?? false;
-    final isCrashMonitoring = ref.watch(crashMonitoringEnabledProvider);
-    final userProfile = ref.watch(currentUserProfileProvider).asData?.value;
-    final allEmergenciesAsync = ref.watch(allEmergenciesProvider);
+    if (_isLoadingUser) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.criticalDanger),
+        ),
+      );
+    }
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Row(
           children: [
-            const Text(
-              'Vindara',
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 22,
-                letterSpacing: -0.5,
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: AppColors.criticalDanger,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.emergency_rounded,
+                size: 20,
+                color: Colors.white,
               ),
             ),
-            const SizedBox(width: 10),
-            // Live Connectivity Pill (Rule #1)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: isOnline
-                    ? Colors.green.shade50
-                    : Colors.amber.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isOnline
-                      ? Colors.green.shade600
-                      : Colors.amber.shade700,
+            const SizedBox(width: 12),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AppConstants.appName,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
                 ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircleAvatar(
-                    radius: 3.5,
-                    backgroundColor: isOnline
-                        ? Colors.green.shade600
-                        : Colors.amber.shade700,
+                Text(
+                  AppConstants.appTagline,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
                   ),
-                  const SizedBox(width: 5),
-                  Text(
-                    isOnline ? 'Online' : 'Offline Mode',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: isOnline
-                          ? Colors.green.shade900
-                          : Colors.amber.shade900,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.person_outline_rounded),
-            tooltip: 'Responder Profile & Settings',
-            onPressed: () => context.push('/profile'),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              children: [
-                const SizedBox(height: 12),
-
-                // Center Primary HELP Trigger Button
-                _buildHelpButtonSection(context),
-
-                const SizedBox(height: 24),
-
-                // Fast 1-Tap Category Triggers
-                _buildQuickCategoryRow(context),
-
-                const SizedBox(height: 18),
-
-                // Possible Crash Detection Status Banner (Rule #10)
-                _buildCrashMonitoringBanner(context, isCrashMonitoring),
-
-                const SizedBox(height: 18),
-
-                // Responder Mode Card
-                _buildResponderCard(context, userProfile, allEmergenciesAsync),
-              ],
-            ),
-          ),
-
-          // Official Emergency Services Layer (Docked Bottom Bar)
-          _buildOfficialServicesBar(context),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Primary HELP Button Section
-  // ---------------------------------------------------------------------------
-  Widget _buildHelpButtonSection(BuildContext context) {
-    return Column(
-      children: [
-        const Text(
-          'Press & hold or tap category for instant emergency broadcast',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            color: Colors.black54,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 20),
-        GestureDetector(
-          onTapDown: (_) => _startHoldTimer(),
-          onTapUp: (_) => _cancelHoldTimer(),
-          onTapCancel: () => _cancelHoldTimer(),
-          onTap: () => _showCategoryConfirmationSheet(context),
-          child: AnimatedBuilder(
-            animation: _pulseController!,
-            builder: (context, child) {
-              final scale = 1.0 + (_pulseController!.value * 0.04);
-              return Transform.scale(
-                scale: scale,
-                child: Container(
-                  width: 190,
-                  height: 190,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const RadialGradient(
-                      colors: [
-                        VindaraTheme.emergencyRed,
-                        VindaraTheme.emergencyDarkRed,
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: VindaraTheme.emergencyRed.withValues(alpha: 0.35),
-                        blurRadius: 24,
-                        spreadRadius: 4,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      if (_holdProgress > 0.0)
-                        SizedBox(
-                          width: 180,
-                          height: 180,
-                          child: CircularProgressIndicator(
-                            value: _holdProgress,
-                            strokeWidth: 6,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
-                          ),
-                        ),
-                      Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.emergency_share_rounded,
-                            size: 42,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'HELP',
-                            style: TextStyle(
-                              fontSize: 34,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: 1.5,
-                            ),
-                          ),
-                          Text(
-                            _isTriggering
-                                ? 'ACQUIRING GPS...'
-                                : 'HOLD 1.2S',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white70,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+          // Quick 112 Hotline Pill Button
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: InkWell(
+              onTap: () => _showHotlineDialog(context),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.criticalDanger.withValues(alpha: 0.15),
+                  border: Border.all(color: AppColors.criticalDanger.withValues(alpha: 0.5)),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Fast 1-Tap Category Triggers
-  // ---------------------------------------------------------------------------
-  Widget _buildQuickCategoryRow(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        _buildCategoryPill(
-          context,
-          icon: Icons.local_hospital_rounded,
-          label: 'Medical',
-          type: EmergencyType.medical,
-        ),
-        _buildCategoryPill(
-          context,
-          icon: Icons.car_crash_rounded,
-          label: 'Accident',
-          type: EmergencyType.accident,
-        ),
-        _buildCategoryPill(
-          context,
-          icon: Icons.security_rounded,
-          label: 'Safety',
-          type: EmergencyType.safety,
-        ),
-        _buildCategoryPill(
-          context,
-          icon: Icons.warning_amber_rounded,
-          label: 'General',
-          type: EmergencyType.general,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCategoryPill(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required EmergencyType type,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => _triggerEmergency(context, type: type),
-      child: Container(
-        width: 76,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.call_rounded, size: 14, color: AppColors.criticalDanger),
+                    SizedBox(width: 6),
+                    Text(
+                      '112',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.criticalDanger,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
+          ),
+        ],
+      ),
+      body: StreamBuilder<List<Emergency>>(
+        stream: widget.repository.watchActiveEmergencies(),
+        builder: (context, snapshot) {
+          final emergencies = snapshot.data ?? [];
+          return _buildContent(context, emergencies);
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _simulateNewEmergency,
+        backgroundColor: AppColors.criticalDanger,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.warning_amber_rounded),
+        label: const Text(
+          'SIMULATE SOS ALERT',
+          style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, List<Emergency> allEmergencies) {
+    // Apply local filters
+    final displayedEmergencies = allEmergencies.where((e) {
+      if (_filterCriticalOnly && e.status != EmergencyStatus.alerting) {
+        return false;
+      }
+      if (_selectedFilterType != null && e.type != _selectedFilterType) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+      children: [
+        // STEP 3: Semantic Colors Badge Row
+        _buildSemanticPaletteLegend(),
+        const SizedBox(height: 16),
+
+        // Responder Profile & Readiness Banner
+        _buildResponderProfileBanner(),
+        const SizedBox(height: 20),
+
+        // Filter Controls & Section Header
+        _buildFeedHeader(allEmergencies.length, displayedEmergencies.length),
+        const SizedBox(height: 12),
+
+        // Emergencies List
+        if (displayedEmergencies.isEmpty)
+          _buildEmptyState()
+        else
+          ...displayedEmergencies.map((emergency) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: EmergencyCard(
+                emergency: emergency,
+                currentUser: _currentUser,
+                onAcceptPrimary: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  await widget.repository.acceptAsPrimary(emergency.id, _currentUser);
+                  if (!mounted) return;
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Accepted ${emergency.id} as Primary Responder!'),
+                      backgroundColor: AppColors.safe,
+                    ),
+                  );
+                },
+                onAcceptStandby: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  await widget.repository.acceptAsStandby(emergency.id, _currentUser);
+                  if (!mounted) return;
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Registered as Standby Responder for ${emergency.id}.'),
+                      backgroundColor: AppColors.warning,
+                    ),
+                  );
+                },
+                onAdvanceStatus: (nextStatus) async {
+                  await widget.repository.advanceEmergencyStatus(emergency.id, nextStatus);
+                },
+                onCall112: () => _showHotlineDialog(context),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  Widget _buildSemanticPaletteLegend() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.palette_outlined, size: 14, color: AppColors.textTertiary),
+              SizedBox(width: 6),
+              Text(
+                'SYSTEM SEMANTIC STATUS CHANNELS',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _buildPaletteItem('SOS / CRITICAL', AppColors.criticalDanger),
+              const SizedBox(width: 6),
+              _buildPaletteItem('CRASH / STANDBY', AppColors.warning),
+              const SizedBox(width: 6),
+              _buildPaletteItem('SAFE / ONLINE', AppColors.safe),
+              const SizedBox(width: 6),
+              _buildPaletteItem('112 / INFO', AppColors.info),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaletteItem(String label, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
         ),
         child: Column(
           children: [
-            Icon(icon, size: 22, color: VindaraTheme.emergencyRed),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+            ),
             const SizedBox(height: 4),
             Text(
               label,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
             ),
           ],
         ),
@@ -332,401 +380,229 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Possible Crash Detection Status Banner (Rule #10)
-  // ---------------------------------------------------------------------------
-  Widget _buildCrashMonitoringBanner(BuildContext context, bool isEnabled) {
+  Widget _buildResponderProfileBanner() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isEnabled ? Colors.blue.shade50 : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isEnabled ? Colors.blue.shade200 : Colors.grey.shade300,
+        gradient: LinearGradient(
+          colors: [
+            AppColors.surface,
+            AppColors.surfaceElevated,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Icon(
-            isEnabled ? Icons.sensors_rounded : Icons.sensors_off_rounded,
-            color: isEnabled ? Colors.blue.shade700 : Colors.grey.shade600,
-            size: 22,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isEnabled
-                      ? 'Possible Crash Guard: Active'
-                      : 'Possible Crash Guard: Paused',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: isEnabled ? Colors.blue.shade900 : Colors.grey.shade800,
-                  ),
-                ),
-                Text(
-                  isEnabled
-                      ? 'Monitors high-G impact patterns'
-                      : 'Tap to enable in Settings',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isEnabled ? Colors.blue.shade700 : Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            onPressed: () => context.push('/profile'),
-            child: const Text('Configure', style: TextStyle(fontSize: 12)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Responder Mode Card
-  // ---------------------------------------------------------------------------
-  Widget _buildResponderCard(
-    BuildContext context,
-    dynamic userProfile,
-    AsyncValue<List<Emergency>> allEmergenciesAsync,
-  ) {
-    final isAvailable = userProfile?.isAvailable ?? false;
-    final isVerified = userProfile?.isVerifiedResponder ?? true;
-    final repPoints = userProfile?.reputationPoints ?? 0;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      isVerified ? Icons.verified_user : Icons.shield_outlined,
-                      color: isVerified
-                          ? Colors.blue.shade700
-                          : Colors.grey.shade700,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Responder Mode',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '★ $repPoints pts',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.amber.shade900,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text(
-                'Available to Help Nearby',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: AppColors.criticalDanger.withValues(alpha: 0.15),
+                child: const Icon(Icons.shield_outlined, color: AppColors.criticalDanger, size: 24),
               ),
-              subtitle: const Text(
-                'Toggle to receive alerts when someone in your area requests HELP.',
-                style: TextStyle(fontSize: 12),
-              ),
-              value: isAvailable,
-              onChanged: (val) {
-                ref
-                    .read(currentUserProfileProvider.notifier)
-                    .setAvailability(val);
-              },
-            ),
-
-            // Active Alerting Emergencies Feed
-            allEmergenciesAsync.when(
-              data: (list) {
-                final active = list
-                    .where((e) =>
-                        e.status == EmergencyStatus.alerting ||
-                        e.status == EmergencyStatus.accepted)
-                    .toList();
-                if (active.isEmpty) return const SizedBox.shrink();
-
-                return Column(
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Divider(height: 20),
-                    const Text(
-                      'Active Nearby Incidents',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: VindaraTheme.emergencyDarkRed,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    ...active.take(2).map(
-                          (emg) => ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            leading: const Icon(
-                              Icons.location_on_rounded,
-                              color: VindaraTheme.emergencyRed,
-                            ),
-                            title: Text(
-                              '${emg.type.name.toUpperCase()} • ${emg.id}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                            subtitle: Text('Status: ${emg.status.name}'),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => context.push('/emergency/${emg.id}'),
+                    Row(
+                      children: [
+                        Text(
+                          _currentUser.name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
                           ),
                         ),
+                        const SizedBox(width: 6),
+                        if (_currentUser.isVerified)
+                          const Icon(Icons.verified, size: 16, color: AppColors.info),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${_currentUser.badgeLevel} • ${_currentUser.points} XP • ${_currentUser.completedResponses} Responses',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   ],
-                );
-              },
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Official Emergency Services Layer (Docked Bottom Bar)
-  // ---------------------------------------------------------------------------
-  Widget _buildOfficialServicesBar(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey.shade300)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+                ),
+              ),
+              // Availability Switch
+              Column(
+                children: [
+                  Switch(
+                    value: _currentUser.isAvailable,
+                    activeThumbColor: AppColors.safe,
+                    onChanged: (val) async {
+                      await widget.repository.updateCurrentUserAvailability(val);
+                      setState(() {
+                        _currentUser = _currentUser.copyWith(isAvailable: val);
+                      });
+                    },
+                  ),
+                  Text(
+                    _currentUser.isAvailable ? 'READY' : 'OFFLINE',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: _currentUser.isAvailable ? AppColors.safe : AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+
+  Widget _buildFeedHeader(int totalCount, int filteredCount) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Official Emergency Services',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 6),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: VindaraTheme.official112Color,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            Row(
+              children: [
+                const Icon(Icons.radar_rounded, size: 18, color: AppColors.criticalDanger),
+                const SizedBox(width: 8),
+                const Text(
+                  'ACTIVE NEARBY INCIDENTS',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    color: AppColors.textPrimary,
                   ),
                 ),
-                icon: const Icon(Icons.phone_in_talk_rounded, size: 20),
-                label: const Text(
-                  'Call 112 (Official Emergency)',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.criticalDanger.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.criticalDanger.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    '$filteredCount',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.criticalDanger,
+                    ),
+                  ),
                 ),
-                onPressed: () => _call112(),
-              ),
+              ],
             ),
-            const SizedBox(height: 4),
-            const Center(
-              child: Text(
-                'Vindara community response complements, but never replaces, official 112 dispatch.',
-                style: TextStyle(fontSize: 10, color: Colors.grey),
+            const Text(
+              'Within 5.0 km',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textTertiary,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 10),
+        // Filter Chips Row
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              FilterChip(
+                label: const Text('All Incidents'),
+                selected: !_filterCriticalOnly && _selectedFilterType == null,
+                onSelected: (_) {
+                  setState(() {
+                    _filterCriticalOnly = false;
+                    _selectedFilterType = null;
+                  });
+                },
+                selectedColor: AppColors.criticalDanger.withValues(alpha: 0.25),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('Critical Alerts'),
+                selected: _filterCriticalOnly,
+                onSelected: (val) {
+                  setState(() {
+                    _filterCriticalOnly = val;
+                  });
+                },
+                selectedColor: AppColors.criticalDanger.withValues(alpha: 0.25),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('Road Crashes'),
+                selected: _selectedFilterType == EmergencyType.roadAccident,
+                onSelected: (val) {
+                  setState(() {
+                    _selectedFilterType = val ? EmergencyType.roadAccident : null;
+                  });
+                },
+                selectedColor: AppColors.warning.withValues(alpha: 0.25),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('Medical'),
+                selected: _selectedFilterType == EmergencyType.medical,
+                onSelected: (val) {
+                  setState(() {
+                    _selectedFilterType = val ? EmergencyType.medical : null;
+                  });
+                },
+                selectedColor: AppColors.criticalDanger.withValues(alpha: 0.25),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Trigger Logic
-  // ---------------------------------------------------------------------------
-  void _startHoldTimer() {
-    _holdProgress = 0.0;
-    _holdTimer?.cancel();
-    _holdTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      setState(() {
-        _holdProgress += 0.05 / 1.2; // 1.2s hold duration
-        if (_holdProgress >= 1.0) {
-          _holdTimer?.cancel();
-          _holdProgress = 0.0;
-          _triggerEmergency(context, type: EmergencyType.general);
-        }
-      });
-    });
-  }
-
-  void _cancelHoldTimer() {
-    _holdTimer?.cancel();
-    if (_holdProgress > 0.0 && _holdProgress < 1.0) {
-      setState(() => _holdProgress = 0.0);
-    }
-  }
-
-  void _showCategoryConfirmationSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
       ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Confirm Emergency Category',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Select category to broadcast your HELP request immediately.',
-                  style: TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-                ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: Colors.red,
-                    child: Icon(Icons.local_hospital, color: Colors.white),
-                  ),
-                  title: const Text('Medical Emergency'),
-                  subtitle: const Text('Cardiac, trauma, fainting, severe illness'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _triggerEmergency(context, type: EmergencyType.medical);
-                  },
-                ),
-                ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: Colors.orange,
-                    child: Icon(Icons.car_crash, color: Colors.white),
-                  ),
-                  title: const Text('Vehicle / Road Accident'),
-                  subtitle: const Text('Collision, vehicle rollover, pedestrian injury'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _triggerEmergency(context, type: EmergencyType.accident);
-                  },
-                ),
-                ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: Colors.indigo,
-                    child: Icon(Icons.security, color: Colors.white),
-                  ),
-                  title: const Text('Personal Safety / Threat'),
-                  subtitle: const Text('Assault, stalking, harassment, physical threat'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _triggerEmergency(context, type: EmergencyType.safety);
-                  },
-                ),
-              ],
+      child: Column(
+        children: [
+          Icon(Icons.shield_rounded, size: 48, color: AppColors.safe.withValues(alpha: 0.5)),
+          const SizedBox(height: 16),
+          const Text(
+            'Vicinity Is Currently Safe',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
             ),
           ),
-        );
-      },
+          const SizedBox(height: 6),
+          const Text(
+            'No active emergency broadcasts matching filters within your neighborhood radius.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
     );
   }
-
-  Future<void> _triggerEmergency(
-    BuildContext context, {
-    required EmergencyType type,
-  }) async {
-    if (_isTriggering) return;
-    setState(() => _isTriggering = true);
-
-    try {
-      final repo = ref.read(emergencyRepositoryProvider);
-      final profile = ref.read(currentUserProfileProvider).asData?.value;
-      final victimId = profile?.uid ?? 'local-victim-user';
-
-      if (repo == null) {
-        throw Exception('EmergencyRepository is not initialized yet');
-      }
-
-      // Create emergency locally first (status: alerting)
-      final emergency = await repo.createEmergency(
-        victimId: victimId,
-        type: type,
-        detectionSource: DetectionSource.manualHelp,
-      );
-
-      // Transition to alerting status so responders are notified
-      await repo.transitionStatus(emergency.id, EmergencyStatus.alerting);
-
-      // Refresh emergencies list provider
-      ref.invalidate(allEmergenciesProvider);
-
-      if (!context.mounted) return;
-      context.push('/emergency/${emergency.id}');
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to trigger emergency: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _isTriggering = false);
-    }
-  }
-
-  Future<void> _call112() async {
-    final uri = Uri.parse('tel:112');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    }
-  }
 }
-

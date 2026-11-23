@@ -67,10 +67,9 @@ class NotificationService {
   String? _fcmToken;
 
   NotificationService({
-    FirebaseMessaging? messaging,
-    FlutterLocalNotificationsPlugin? localNotifications,
-  })  : _messaging = messaging,
-        _localNotifications = localNotifications;
+    this._messaging,
+    this._localNotifications,
+  });
 
   /// Stream of route paths to navigate to (e.g. `/emergency/<id>`) on notification tap.
   Stream<String> get deepLinkStream => _deepLinkController.stream;

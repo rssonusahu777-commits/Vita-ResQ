@@ -134,10 +134,9 @@ class NearbyRelayService {
   bool _isActive = false;
 
   NearbyRelayService({
-    required NearbyTransport transport,
-    required LocalEmergencyStore localStore,
-  })  : _transport = transport,
-        _localStore = localStore;
+    required this._transport,
+    required this._localStore,
+  });
 
   /// Stream of new or updated emergencies received from nearby peers.
   Stream<Emergency> get relayedEmergenciesStream =>

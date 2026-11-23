@@ -1,154 +1,95 @@
-// lib/models/emergency.dart
-//
-// SafeReach — Core Emergency Domain Model
-// Package: com.example.safereach
-//
-// Phase 1: Domain model only. No Firebase, no UI, no network calls.
-// ID format: EMG-2026-XXXXXXXX  (8 uppercase hex chars, client-generated)
-
 import 'dart:math';
+import 'responder.dart';
 
-// ---------------------------------------------------------------------------
-// Enums
-// ---------------------------------------------------------------------------
-
-/// The nature / category of the emergency.
-enum EmergencyType {
-  /// Medical emergency (cardiac, injury, illness, etc.)
-  medical,
-
-  /// Vehicle or workplace accident.
-  accident,
-
-  /// Personal safety threat (assault, stalking, etc.)
-  safety,
-
-  /// Catch-all for emergencies that don't fit the above.
-  general,
-}
-
-/// How the emergency was initiated.
-enum DetectionSource {
-  /// User deliberately pressed the HELP button.
-  manualHelp,
-
-  /// Sensor heuristics (accelerometer) suggested a possible crash.
-  /// UI must frame this as "Possible Crash" — never as a definitive "Crash".
-  possibleCrash,
-}
-
-/// Lifecycle state of an emergency.
-/// Transitions are enforced by [Emergency.canTransitionTo].
+/// Status lifecycle for an emergency event
 enum EmergencyStatus {
-  /// Emergency record created; not yet broadcast to responders.
   created,
-
-  /// Broadcast sent; waiting for a responder to accept.
   alerting,
-
-  /// A primary responder has claimed the emergency (atomic transaction).
   accepted,
-
-  /// Responder has confirmed they are on scene.
   inProgress,
-
-  /// Emergency is over; responder or system marked it resolved.
   resolved,
-
-  /// Cancelled by the victim, responder, or system timeout.
   cancelled,
 }
 
-/// Whether this emergency is being coordinated online or offline.
-enum CommunicationMode {
-  /// Full internet reachability confirmed (not just link-layer).
-  online,
+/// How the incident was triggered
+enum DetectionSource {
+  manualSos,
+  manualHelp,
+  possibleCrash,
+}
 
-  /// No confirmed internet reachability; using local DB + sync queue.
+/// Network connectivity mode at broadcast time
+enum CommunicationMode {
+  online,
+  offlineNearby,
   offline,
 }
 
-// ---------------------------------------------------------------------------
-// Emergency
-// ---------------------------------------------------------------------------
+/// Category of the critical emergency
+enum EmergencyType {
+  medical,
+  roadAccident,
+  accident,
+  fire,
+  personalSafety,
+  safety,
+  general,
+  other,
+}
 
-/// Central entity representing a single emergency event.
-///
-/// Design rules (see docs/ARCHITECTURE.md for full detail):
-/// - [id] is always generated client-side via [Emergency.generateId()].
-/// - GPS coordinates are independent of any map SDK or tile server.
-/// - [status] transitions must be validated with [canTransitionTo] before any DB write.
-/// - [version] is an optimistic concurrency counter; increment on every write.
+/// Immutable Core Emergency Model for Vindara
 class Emergency {
-  /// Unique collision-resistant ID in the format `EMG-2026-XXXXXXXX`.
   final String id;
-
-  /// UID of the person who triggered this emergency.
-  final String victimId;
-
-  /// WGS-84 latitude in decimal degrees.
+  final String victimName;
+  final String? victimId;
   final double latitude;
-
-  /// WGS-84 longitude in decimal degrees.
   final double longitude;
-
-  /// GPS fix accuracy in metres (lower is better).
   final double accuracyMeters;
-
-  /// Category of the emergency.
+  final String locationLabel;
   final EmergencyType type;
-
-  /// UTC timestamp when the emergency record was first created on-device.
   final DateTime createdAt;
-
-  /// How this emergency was initiated.
   final DetectionSource detectionSource;
-
-  /// Current lifecycle state.
   final EmergencyStatus status;
-
-  /// UID of the responder who accepted and is handling this emergency.
-  /// Null until a responder claims it via an atomic Firestore transaction.
-  final String? primaryResponderId;
-
-  /// UID of a backup responder who is on standby.
-  final String? standbyResponderId;
-
-  /// Whether this emergency is being tracked online or offline.
   final CommunicationMode communicationMode;
-
-  /// Optimistic concurrency version. Must be incremented on every mutation.
-  /// Callers must verify their local version matches remote before writing.
+  final bool isSyncedToCloud;
   final int version;
+  final Responder? primaryResponder;
+  final String? primaryResponderId;
+  final Responder? standbyResponder;
+  final String? standbyResponderId;
+  final String? notes;
+  final String? victimPhone;
 
   const Emergency({
     required this.id,
-    required this.victimId,
+    required this.victimName,
+    this.victimId,
     required this.latitude,
     required this.longitude,
-    required this.accuracyMeters,
+    this.accuracyMeters = 5.0,
+    required this.locationLabel,
     required this.type,
     required this.createdAt,
     required this.detectionSource,
     required this.status,
-    this.primaryResponderId,
-    this.standbyResponderId,
     required this.communicationMode,
+    this.isSyncedToCloud = false,
     this.version = 1,
+    this.primaryResponder,
+    this.primaryResponderId,
+    this.standbyResponder,
+    this.standbyResponderId,
+    this.notes,
+    this.victimPhone,
   });
 
-  // -------------------------------------------------------------------------
-  // ID Generation
-  // -------------------------------------------------------------------------
+  String get effectiveVictimId => victimId ?? id;
+  String? get effectivePrimaryResponderId => primaryResponder?.id ?? primaryResponderId;
+  String? get effectiveStandbyResponderId => standbyResponder?.id ?? standbyResponderId;
 
-  /// Generates a collision-resistant emergency ID in the format
-  /// `EMG-2026-XXXXXXXX` where XXXXXXXX is 8 uppercase hexadecimal characters
-  /// derived from 4 cryptographically random bytes.
-  ///
-  /// Uses [Random.secure()] to ensure independence from timestamp or device ID,
-  /// making offline-generated IDs safe to merge into Firestore without renaming.
-  ///
-  /// Example output: `EMG-2026-9F4A2C1B`
+  String get displayVictimPhone => victimPhone ?? '+91 7999279412';
+
+  /// Generates a collision-resistant emergency ID: EMG-2026-XXXXXXXX (Rule #7)
   static String generateId() {
     final rng = Random.secure();
     final bytes = List<int>.generate(4, (_) => rng.nextInt(256));
@@ -159,25 +100,7 @@ class Emergency {
     return 'EMG-2026-$hex';
   }
 
-  // -------------------------------------------------------------------------
-  // State Machine
-  // -------------------------------------------------------------------------
-
-  /// Returns `true` if transitioning from the current [status] to [nextStatus]
-  /// is a valid move in the SafeReach emergency lifecycle state machine.
-  ///
-  /// Callers MUST check this before writing any status change to the local DB
-  /// or Firestore. An invalid transition indicates a bug or a race condition.
-  ///
-  /// Allowed transitions:
-  /// ```
-  /// created   → alerting, cancelled
-  /// alerting  → accepted, cancelled
-  /// accepted  → inProgress, cancelled, alerting
-  /// inProgress→ resolved, cancelled
-  /// resolved  → (none — terminal)
-  /// cancelled → (none — terminal)
-  /// ```
+  /// State machine rule: can transition to [nextStatus]
   bool canTransitionTo(EmergencyStatus nextStatus) {
     switch (status) {
       case EmergencyStatus.created:
@@ -197,70 +120,100 @@ class Emergency {
         return nextStatus == EmergencyStatus.resolved ||
             nextStatus == EmergencyStatus.cancelled;
 
-      // Terminal states — no outgoing transitions.
       case EmergencyStatus.resolved:
       case EmergencyStatus.cancelled:
         return false;
     }
   }
 
-  // -------------------------------------------------------------------------
-  // copyWith
-  // -------------------------------------------------------------------------
-
-  /// Returns a new [Emergency] with the specified fields replaced.
-  /// Increments [version] automatically unless a specific version is supplied.
   Emergency copyWith({
     String? id,
+    String? victimName,
     String? victimId,
     double? latitude,
     double? longitude,
     double? accuracyMeters,
+    String? locationLabel,
     EmergencyType? type,
     DateTime? createdAt,
     DetectionSource? detectionSource,
     EmergencyStatus? status,
+    CommunicationMode? communicationMode,
+    bool? isSyncedToCloud,
+    int? version,
+    Responder? primaryResponder,
     String? primaryResponderId,
     bool clearPrimaryResponderId = false,
+    Responder? standbyResponder,
     String? standbyResponderId,
     bool clearStandbyResponderId = false,
-    CommunicationMode? communicationMode,
-    int? version,
+    String? notes,
+    String? victimPhone,
   }) {
     return Emergency(
       id: id ?? this.id,
+      victimName: victimName ?? this.victimName,
       victimId: victimId ?? this.victimId,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       accuracyMeters: accuracyMeters ?? this.accuracyMeters,
+      locationLabel: locationLabel ?? this.locationLabel,
       type: type ?? this.type,
       createdAt: createdAt ?? this.createdAt,
       detectionSource: detectionSource ?? this.detectionSource,
       status: status ?? this.status,
+      communicationMode: communicationMode ?? this.communicationMode,
+      isSyncedToCloud: isSyncedToCloud ?? this.isSyncedToCloud,
+      version: version ?? (this.version + 1),
+      primaryResponder: clearPrimaryResponderId
+          ? null
+          : (primaryResponder ?? this.primaryResponder),
       primaryResponderId: clearPrimaryResponderId
           ? null
           : (primaryResponderId ?? this.primaryResponderId),
+      standbyResponder: clearStandbyResponderId
+          ? null
+          : (standbyResponder ?? this.standbyResponder),
       standbyResponderId: clearStandbyResponderId
           ? null
           : (standbyResponderId ?? this.standbyResponderId),
-      communicationMode: communicationMode ?? this.communicationMode,
-      version: version ?? (this.version + 1),
+      notes: notes ?? this.notes,
+      victimPhone: victimPhone ?? this.victimPhone,
     );
   }
 
-  // -------------------------------------------------------------------------
-  // Serialization
-  // -------------------------------------------------------------------------
+  /// Formatted GPS coordinates for high-contrast tabular readout
+  String get formattedCoordinates =>
+      '${latitude.toStringAsFixed(5)}° N, ${longitude.toStringAsFixed(5)}° E';
 
-  /// Converts this [Emergency] to a JSON-serialisable [Map].
-  /// Suitable for Firestore documents, Hive boxes, and SQLite rows.
+  /// Human-readable label for emergency type
+  String get typeDisplayName {
+    switch (type) {
+      case EmergencyType.roadAccident:
+      case EmergencyType.accident:
+        return 'Road Crash / Accident';
+      case EmergencyType.medical:
+        return 'Medical Emergency';
+      case EmergencyType.fire:
+        return 'Fire Emergency';
+      case EmergencyType.personalSafety:
+      case EmergencyType.safety:
+        return 'Personal Safety';
+      case EmergencyType.general:
+      case EmergencyType.other:
+        return 'Critical Incident';
+    }
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'victimId': victimId,
+      'victimName': victimName,
       'latitude': latitude,
       'longitude': longitude,
       'accuracyMeters': accuracyMeters,
+      'locationLabel': locationLabel,
       'type': type.name,
       'createdAt': createdAt.toUtc().toIso8601String(),
       'detectionSource': detectionSource.name,
@@ -268,68 +221,75 @@ class Emergency {
       'primaryResponderId': primaryResponderId,
       'standbyResponderId': standbyResponderId,
       'communicationMode': communicationMode.name,
+      'isSyncedToCloud': isSyncedToCloud,
       'version': version,
+      'notes': notes,
+      'victimPhone': victimPhone,
     };
   }
 
-  /// Creates an [Emergency] from a JSON map (Firestore document, local DB row,
-  /// or decoded HTTP response body).
-  ///
-  /// Throws [ArgumentError] if any required field is missing or has an
-  /// unexpected enum value.
   factory Emergency.fromJson(Map<String, dynamic> json) {
     EmergencyType parseType(String raw) {
       return EmergencyType.values.firstWhere(
         (e) => e.name == raw,
-        orElse: () =>
-            throw ArgumentError('Unknown EmergencyType value: "$raw"'),
+        orElse: () => EmergencyType.other,
       );
     }
 
     DetectionSource parseSource(String raw) {
       return DetectionSource.values.firstWhere(
         (e) => e.name == raw,
-        orElse: () =>
-            throw ArgumentError('Unknown DetectionSource value: "$raw"'),
+        orElse: () => DetectionSource.manualSos,
       );
     }
 
     EmergencyStatus parseStatus(String raw) {
       return EmergencyStatus.values.firstWhere(
         (e) => e.name == raw,
-        orElse: () =>
-            throw ArgumentError('Unknown EmergencyStatus value: "$raw"'),
+        orElse: () => EmergencyStatus.created,
       );
     }
 
     CommunicationMode parseMode(String raw) {
       return CommunicationMode.values.firstWhere(
         (e) => e.name == raw,
-        orElse: () =>
-            throw ArgumentError('Unknown CommunicationMode value: "$raw"'),
+        orElse: () => CommunicationMode.online,
       );
     }
 
+    final id = json['id'] as String? ?? Emergency.generateId();
+    final vId = json['victimId'] as String? ?? id;
+    final vName = json['victimName'] as String? ?? 'Citizen Victim';
+    final lat = (json['latitude'] as num?)?.toDouble() ?? 21.1619;
+    final lng = (json['longitude'] as num?)?.toDouble() ?? 81.7869;
+    final accuracy = (json['accuracyMeters'] as num?)?.toDouble() ?? 5.0;
+    final label = json['locationLabel'] as String? ?? 'Incident Location';
+    final createdAtStr = json['createdAt'] as String?;
+    final createdAt = createdAtStr != null
+        ? DateTime.tryParse(createdAtStr)?.toUtc() ?? DateTime.now().toUtc()
+        : DateTime.now().toUtc();
+
     return Emergency(
-      id: json['id'] as String,
-      victimId: json['victimId'] as String,
-      latitude: (json['latitude'] as num).toDouble(),
-      longitude: (json['longitude'] as num).toDouble(),
-      accuracyMeters: (json['accuracyMeters'] as num).toDouble(),
-      type: parseType(json['type'] as String),
-      createdAt: DateTime.parse(json['createdAt'] as String).toUtc(),
-      detectionSource: parseSource(json['detectionSource'] as String),
-      status: parseStatus(json['status'] as String),
+      id: id,
+      victimId: vId,
+      victimName: vName,
+      latitude: lat,
+      longitude: lng,
+      accuracyMeters: accuracy,
+      locationLabel: label,
+      type: parseType(json['type'] as String? ?? 'medical'),
+      createdAt: createdAt,
+      detectionSource: parseSource(json['detectionSource'] as String? ?? 'manualSos'),
+      status: parseStatus(json['status'] as String? ?? 'created'),
       primaryResponderId: json['primaryResponderId'] as String?,
       standbyResponderId: json['standbyResponderId'] as String?,
-      communicationMode: parseMode(json['communicationMode'] as String),
-      version: (json['version'] as num).toInt(),
+      communicationMode: parseMode(json['communicationMode'] as String? ?? 'online'),
+      isSyncedToCloud: json['isSyncedToCloud'] as bool? ?? false,
+      version: (json['version'] as num?)?.toInt() ?? 1,
+      notes: json['notes'] as String?,
+      victimPhone: json['victimPhone'] as String?,
     );
   }
-
-  // -------------------------------------------------------------------------
-  // Equality & Debug
-  // -------------------------------------------------------------------------
 
   @override
   bool operator ==(Object other) =>
@@ -344,15 +304,6 @@ class Emergency {
 
   @override
   String toString() {
-    return 'Emergency('
-        'id: $id, '
-        'victimId: $victimId, '
-        'type: ${type.name}, '
-        'status: ${status.name}, '
-        'detectionSource: ${detectionSource.name}, '
-        'communicationMode: ${communicationMode.name}, '
-        'version: $version'
-        ')';
+    return 'Emergency(id: $id, victim: $victimName, type: $type, status: $status, location: $locationLabel)';
   }
 }
-

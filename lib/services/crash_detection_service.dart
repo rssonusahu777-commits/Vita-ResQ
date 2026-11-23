@@ -67,14 +67,13 @@ class CrashDetectionService {
   double? _candidateSpikeAcc;
 
   CrashDetectionService({
-    Stream<UserAccelerometerEvent>? userAccelerometerStream,
-    Stream<GyroscopeEvent>? gyroscopeStream,
+    this._userAccelerometerStream,
+    this._gyroscopeStream,
     this.accelerationThreshold = 28.0, // ~2.8G
     this.rotationThreshold = 3.5, // rad/s
     this.postImpactWindow = const Duration(milliseconds: 1500),
     this.debounceCooldown = const Duration(seconds: 15),
-  })  : _userAccelerometerStream = userAccelerometerStream,
-        _gyroscopeStream = gyroscopeStream;
+  });
 
   /// Continuous broadcast stream of possible crash detection events.
   Stream<PossibleCrashEvent> get possibleCrashStream =>

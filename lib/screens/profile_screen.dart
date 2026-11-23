@@ -1,363 +1,443 @@
-// lib/screens/profile_screen.dart
-//
-// Vindara — Profile & Responder Settings Screen (Phase 6)
-// Package: com.vindara.app
-
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../constants/platform_limitations.dart';
-import '../models/user_profile.dart';
-import '../providers/providers.dart';
-import 'auth_screen.dart';
+import '../core/theme/app_theme.dart';
+import '../data/mock_emergency_repository.dart';
+import '../models/responder.dart';
+import 'edit_profile_screen.dart';
+import 'emergency_contacts_screen.dart';
+import 'notifications_screen.dart';
+import 'rewards_screen.dart';
 
-class ProfileScreen extends ConsumerWidget {
-  const ProfileScreen({super.key});
+/// Clean, Modern Profile Screen Matching Reference Design
+class ProfileScreen extends StatefulWidget {
+  final EmergencyRepository repository;
+  final VoidCallback? onBackToHome;
+
+  const ProfileScreen({
+    super.key,
+    required this.repository,
+    this.onBackToHome,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final userProfileAsync = ref.watch(currentUserProfileProvider);
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Responder Profile & Settings'),
-      ),
-      body: userProfileAsync.when(
-        data: (profile) => _buildProfileBody(context, ref, profile),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error loading profile: $e')),
-      ),
-    );
+class _ProfileScreenState extends State<ProfileScreen> {
+  bool _spokenAlertsEnabled = true;
+
+  void _handleBack() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      widget.onBackToHome?.call();
+    }
   }
 
-  Widget _buildProfileBody(
-    BuildContext context,
-    WidgetRef ref,
-    UserProfile? profile,
-  ) {
-    final effectiveProfile = profile ??
-        const UserProfile(
-          uid: 'local-user',
-          displayName: 'Community Member',
-          isVerifiedResponder: true,
-          isAvailable: true,
-          reputationPoints: 120,
-          successfulAssistanceCount: 6,
-          responseHistoryCount: 7,
-          badges: ['first_responder', 'community_guardian'],
-        );
+  Future<void> _openEditProfile() async {
+    final updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (ctx) => EditProfileScreen(
+          repository: widget.repository,
+        ),
+      ),
+    );
+    if (updated == true && mounted) {
+      setState(() {});
+    }
+  }
 
-    final isCrashMonitoring = ref.watch(crashMonitoringEnabledProvider);
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary, size: 24),
+          onPressed: _handleBack,
+        ),
+        titleSpacing: 0,
+        title: const Text(
+          'Profile',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ),
+      body: FutureBuilder<Responder>(
+        future: widget.repository.getCurrentUserResponder(),
+        builder: (context, snapshot) {
+          final responder = snapshot.data;
+          final displayName = responder?.name ?? 'ayush patnayak';
+          final phone = responder?.phoneNumber ?? '6265915661';
+          final bloodGroup = responder?.bloodGroup ?? 'A+';
+          final badge = responder?.badgeLevel ?? 'Citizen Volunteer';
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // User Identity Card
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                  child: Text(
-                    effectiveProfile.displayName.isNotEmpty
-                        ? effectiveProfile.displayName[0].toUpperCase()
-                        : 'V',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        effectiveProfile.displayName,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            effectiveProfile.isVerifiedResponder
-                                ? Icons.verified
-                                : Icons.person_outline,
-                            size: 16,
-                            color: effectiveProfile.isVerifiedResponder
-                                ? Colors.blue.shade700
-                                : Colors.grey.shade600,
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+            children: [
+              // 1. Centered Circular Avatar + User Header
+              Center(
+                child: Column(
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 88,
+                          height: 88,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFEFF2F6),
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(width: 4),
+                          child: const Icon(
+                            Icons.person_rounded,
+                            size: 52,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: InkWell(
+                            onTap: _openEditProfile,
+                            borderRadius: BorderRadius.circular(14),
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.edit_outlined,
+                                size: 14,
+                                color: Color(0xFF374151),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      displayName,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    const Text(
+                      'ayushpatnayak07@gmail.com',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: Color(0xFF6B7280),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.shield_outlined, size: 14, color: Color(0xFF1E293B)),
+                          const SizedBox(width: 6),
                           Text(
-                            effectiveProfile.isVerifiedResponder
-                                ? 'Verified Community Responder'
-                                : 'Civilian User',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey.shade700,
-                              fontWeight: FontWeight.w500,
+                            badge,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1E293B),
                             ),
                           ),
                         ],
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 22),
+
+              // 2. ACCOUNT Section
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 8),
+                child: Text(
+                  'ACCOUNT',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    color: Color(0xFF6B7280),
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-
-        // Responder Availability Toggle Card
-        Card(
-          child: SwitchListTile(
-            title: const Text(
-              'Available to Help Nearby',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: const Text(
-              'Receive high-priority emergency push alerts when someone near you requests HELP.',
-            ),
-            value: effectiveProfile.isAvailable,
-            onChanged: (val) {
-              ref
-                  .read(currentUserProfileProvider.notifier)
-                  .setAvailability(val);
-            },
-          ),
-        ),
-
-        // Possible Crash Detection Monitoring Toggle Card (Rule #10)
-        Card(
-          child: Column(
-            children: [
-              SwitchListTile(
-                title: const Text(
-                  'Possible Crash Detection',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: const Text(
-                  'Detects high-impact motion patterns and starts a 10s cancellable countdown.',
-                ),
-                value: isCrashMonitoring,
-                onChanged: (val) {
-                  ref
-                      .read(crashMonitoringEnabledProvider.notifier)
-                      .toggle(val);
-                },
               ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Test Simulation:',
-                      style: TextStyle(fontSize: 13, color: Colors.grey),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFEAE8E3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
                     ),
-                    TextButton.icon(
-                      icon: const Icon(Icons.play_circle_outline, size: 18),
-                      label: const Text('Test Possible Crash Countdown'),
-                      onPressed: () {
-                        context.push('/crash-countdown');
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    _buildProfileItem(
+                      icon: Icons.person_outline_rounded,
+                      iconColor: const Color(0xFF1E293B),
+                      iconBgColor: const Color(0xFFF1F5F9),
+                      title: 'Personal Information',
+                      subtitle: '$phone • Blood: $bloodGroup',
+                      onTap: _openEditProfile,
+                    ),
+                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    _buildProfileItem(
+                      icon: Icons.phone_outlined,
+                      iconColor: const Color(0xFF1E293B),
+                      iconBgColor: const Color(0xFFF1F5F9),
+                      title: 'Phone Number',
+                      subtitle: phone,
+                      onTap: _openEditProfile,
+                    ),
+                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    _buildProfileItem(
+                      icon: Icons.water_drop_outlined,
+                      iconColor: const Color(0xFFDC2626),
+                      iconBgColor: const Color(0xFFFEE2E2),
+                      title: 'Blood Group',
+                      subtitle: '$bloodGroup (Medical ID)',
+                      onTap: _openEditProfile,
+                    ),
+                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    _buildProfileItem(
+                      icon: Icons.badge_outlined,
+                      iconColor: const Color(0xFF1E293B),
+                      iconBgColor: const Color(0xFFF1F5F9),
+                      title: 'Edit Profile & Role',
+                      subtitle: 'Update phone number, blood group, or volunteer role',
+                      onTap: _openEditProfile,
+                    ),
+                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    _buildProfileItem(
+                      icon: Icons.contact_phone_outlined,
+                      iconColor: const Color(0xFF1E293B),
+                      iconBgColor: const Color(0xFFF1F5F9),
+                      title: 'Emergency Contacts (Auto-SMS)',
+                      subtitle: '3 Configured trusted contacts',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (ctx) => const EmergencyContactsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    _buildProfileItem(
+                      icon: Icons.volunteer_activism_outlined,
+                      iconColor: const Color(0xFF1E293B),
+                      iconBgColor: const Color(0xFFF1F5F9),
+                      title: 'My Impact & Activity',
+                      subtitle: '28 Assists Logged • Community Trust',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (ctx) => RewardsScreen(repository: widget.repository),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    _buildProfileItem(
+                      icon: Icons.notifications_none_rounded,
+                      iconColor: const Color(0xFF1E293B),
+                      iconBgColor: const Color(0xFFF1F5F9),
+                      title: 'Emergency Notifications History',
+                      subtitle: 'Recent broadcast logs & dispatch alerts',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (ctx) => NotificationsScreen(repository: widget.repository),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // 3. EMERGENCY NOTIFICATIONS Section
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 8),
+                child: Text(
+                  'EMERGENCY NOTIFICATIONS',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFEAE8E3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.record_voice_over_outlined,
+                        color: Color(0xFF2563EB),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'Spoken Emergency Alerts',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Spoken audio alert enabled for incoming emergencies',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: Color(0xFF6B7280),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Switch(
+                      value: _spokenAlertsEnabled,
+                      activeTrackColor: const Color(0xFF3B82F6),
+                      activeThumbColor: Colors.white,
+                      inactiveThumbColor: Colors.white,
+                      inactiveTrackColor: const Color(0xFFE5E7EB),
+                      onChanged: (val) {
+                        setState(() => _spokenAlertsEnabled = val);
                       },
                     ),
                   ],
                 ),
               ),
             ],
-          ),
-        ),
-
-        // Reputation & Stats Grid
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Community Reputation & Track Record',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildStatItem(
-                      label: 'Points',
-                      value: '${effectiveProfile.reputationPoints}',
-                      icon: Icons.stars_rounded,
-                      color: Colors.amber.shade700,
-                    ),
-                    _buildStatItem(
-                      label: 'Assists',
-                      value: '${effectiveProfile.successfulAssistanceCount}',
-                      icon: Icons.volunteer_activism_rounded,
-                      color: Colors.green.shade700,
-                    ),
-                    _buildStatItem(
-                      label: 'Success Rate',
-                      value: '${(effectiveProfile.successRate * 100).toInt()}%',
-                      icon: Icons.trending_up_rounded,
-                      color: Colors.blue.shade700,
-                    ),
-                  ],
-                ),
-                if (effectiveProfile.badges.isNotEmpty) ...[
-                  const Divider(height: 32),
-                  const Text(
-                    'Earned Badges',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: effectiveProfile.badges.map((b) {
-                      return Chip(
-                        avatar: const Icon(Icons.shield_outlined, size: 16),
-                        label: Text(
-                          b.replaceAll('_', ' ').toUpperCase(),
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                        backgroundColor: Colors.blueGrey.shade50,
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-
-        // System & Notification Reliability Card (Rule #5)
-        Card(
-          color: Colors.amber.shade50,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.info_outline_rounded,
-                        color: Colors.amber.shade900, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'System & Notification Reliability',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.amber.shade900,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  PlatformLimitations.osForceStopLimitationNotice,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.4,
-                    color: Colors.amber.shade900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Sign Out Card
-        Card(
-          elevation: 0,
-          color: Colors.red.shade50,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.red.shade200),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: ListTile(
-              leading: Icon(Icons.logout_rounded, color: Colors.red.shade800),
-              title: Text(
-                'Sign Out',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.red.shade900,
-                ),
-              ),
-              subtitle: const Text(
-                'Sign out of your Vindara account on this device.',
-              ),
-              trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade700,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () async {
-                  if (Firebase.apps.isNotEmpty) {
-                    try {
-                      await FirebaseAuth.instance.signOut();
-                    } catch (_) {}
-                  }
-                  ref.read(offlineEmergencyBypassProvider.notifier).state = false;
-                  final repo = await ref.read(userProfileRepositoryProvider.future);
-                  await repo.clearProfile();
-                  if (context.mounted) {
-                    context.go('/auth');
-                  }
-                },
-                child: const Text('Sign Out'),
-              ),
-            ),
-          ),
-        ),
-      ],
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildStatItem({
-    required String label,
-    required String value,
+  Widget _buildProfileItem({
     required IconData icon,
-    required Color color,
+    required Color iconColor,
+    required Color iconBgColor,
+    required String title,
+    required String subtitle,
+    VoidCallback? onTap,
   }) {
-    return Column(
-      children: [
-        Icon(icon, color: color, size: 28),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: iconBgColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 20, color: iconColor),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF6B7280),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: Color(0xFF9CA3AF),
+            ),
+          ],
         ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-        ),
-      ],
+      ),
     );
   }
 }
