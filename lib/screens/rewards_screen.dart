@@ -83,17 +83,17 @@ class RewardsScreen extends StatelessWidget {
                     const SizedBox(height: 14),
                     Row(
                       children: [
-                        _buildMetricBox('Completed Assists', '${responder?.completedResponses ?? 28}', AppColors.onlineGreen),
+                        _buildMetricBox('Completed Assists', '${responder?.completedResponses ?? 0}', AppColors.onlineGreen),
                         const SizedBox(width: 12),
-                        _buildMetricBox('Reliability Index', '99.4%', AppColors.officialBlue),
+                        _buildMetricBox('Reliability Index', (responder?.completedResponses ?? 0) > 0 ? '99.4%' : 'N/A', AppColors.officialBlue),
                       ],
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        _buildMetricBox('Standby Failovers', '6 Ready', AppColors.warningAmber),
+                        _buildMetricBox('Standby Failovers', (responder?.completedResponses ?? 0) > 0 ? '6 Ready' : '0 Ready', AppColors.warningAmber),
                         const SizedBox(width: 12),
-                        _buildMetricBox('Mesh Packets Relayed', '142 hops', AppColors.textPrimary),
+                        _buildMetricBox('Mesh Packets Relayed', (responder?.completedResponses ?? 0) > 0 ? '142 hops' : '0 hops', AppColors.textPrimary),
                       ],
                     ),
                   ],

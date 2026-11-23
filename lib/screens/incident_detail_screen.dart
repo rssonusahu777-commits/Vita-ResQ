@@ -216,10 +216,10 @@ class IncidentDetailScreen extends StatelessWidget {
               children: [
                 _buildTimelineItem(
                   time: '00:00',
-                  title: 'SOS Alert Triggered',
+                  title: 'HELP Alert Triggered',
                   subtitle: emergency.detectionSource == DetectionSource.possibleCrash
-                      ? 'Automated High-G deceleration trigger (20s grace expired).'
-                      : 'Manual Hold-to-SOS triggered by victim.',
+                      ? 'Automated pattern-based crash trigger (grace expired).'
+                      : 'Manual Hold-to-HELP triggered by victim.',
                   isDone: true,
                   isLast: false,
                 ),

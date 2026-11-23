@@ -163,7 +163,7 @@ class _ActiveEmergencySheetState extends State<ActiveEmergencySheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'SOS BROADCAST ACTIVE',
+                            'HELP BROADCAST ACTIVE',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,

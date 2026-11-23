@@ -55,7 +55,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       AppNotification(
         id: 'NOTIF-01',
         title: 'Incoming Emergency Alert Nearby',
-        body: 'Medical SOS registered 86m from your location at Sector 4, Community Axis, Raipur.',
+        body: 'Medical HELP registered 86m from your location at Sector 4, Community Axis, Raipur.',
         timestamp: DateTime.now().subtract(const Duration(minutes: 3)),
         category: NotificationCategory.incomingRequest,
         relatedEmergencyId: 'EMG-2026-781920',
@@ -184,60 +184,63 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 6, offset: const Offset(0, 2)),
                 ],
               ),
-              child: ListTile(
-                onTap: () => _handleNotificationTap(item),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                leading: Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: _getCategoryColor(item.category).withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
+              child: Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  onTap: () => _handleNotificationTap(item),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  leading: Container(
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      color: _getCategoryColor(item.category).withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _getCategoryIcon(item.category),
+                      size: 20,
+                      color: _getCategoryColor(item.category),
+                    ),
                   ),
-                  child: Icon(
-                    _getCategoryIcon(item.category),
-                    size: 20,
-                    color: _getCategoryColor(item.category),
-                  ),
-                ),
-                title: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        item.title,
-                        style: const TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.title,
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                       ),
-                    ),
-                    if (item.isUnread) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: AppColors.primaryRed,
-                          shape: BoxShape.circle,
+                      if (item.isUnread) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: AppColors.primaryRed,
+                            shape: BoxShape.circle,
+                          ),
                         ),
+                      ],
+                    ],
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      Text(
+                        item.body,
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.35),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _formatRelativeTime(item.timestamp),
+                        style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.textTertiary),
                       ),
                     ],
-                  ],
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 4),
-                    Text(
-                      item.body,
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.35),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _formatRelativeTime(item.timestamp),
-                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.textTertiary),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             );

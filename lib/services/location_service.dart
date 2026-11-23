@@ -128,9 +128,8 @@ class LocationService {
     // --- Step 0: guard rails ---
     final serviceEnabled = await isLocationServiceEnabled();
     if (!serviceEnabled) {
-      // Try fallbacks even if the service is disabled (cached is better than
-      // throwing immediately).
-      return _fallbackFix() ??
+      final fallback = await tryGetPlatformLastKnown();
+      return fallback ??
           (throw const LocationServiceException(
             LocationServiceError.serviceDisabled,
           ));
@@ -138,7 +137,8 @@ class LocationService {
 
     final hasPermission = await ensurePermission();
     if (!hasPermission) {
-      return _fallbackFix() ??
+      final fallback = await tryGetPlatformLastKnown();
+      return fallback ??
           (throw const LocationServiceException(
             LocationServiceError.permissionDenied,
           ));
@@ -174,7 +174,8 @@ class LocationService {
     }
 
     // --- Step 2: platform last-known position ---
-    return _fallbackFix() ??
+    final fallback = await tryGetPlatformLastKnown();
+    return fallback ??
         (throw const LocationServiceException(
           LocationServiceError.noFixAvailable,
         ));
@@ -219,18 +220,6 @@ class LocationService {
   // Internal fallback helpers
   // ---------------------------------------------------------------------------
 
-  /// Tries platform last-known, then app cache. Returns null if both are absent.
-  LocationFix? _fallbackFix() {
-    return _platformLastKnownFix() ?? _appCachedFix();
-  }
-
-  LocationFix? _platformLastKnownFix() {
-    // getLastKnownPosition is async; we must not block here.
-    // We use a sync approach: the cached position from the store is preferred
-    // when we cannot await. For the async variant see tryGetPlatformLastKnown().
-    return null; // resolved asynchronously in tryGetPlatformLastKnown
-  }
-
   LocationFix? _appCachedFix() {
     final cached = _store.getLastKnownLocation();
     if (cached == null) return null;
@@ -262,6 +251,68 @@ class LocationService {
       // Platform may throw on some devices — treat as unavailable.
     }
     return _appCachedFix();
+  }
+
+  /// Standalone helper to obtain the best available location fix without requiring a store instance.
+  /// Used directly by screens during emergency dispatch.
+  static Future<LocationFix?> acquireBestAvailableFix({
+    Duration timeout = const Duration(seconds: 4),
+  }) async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          return LocationFix(
+            latitude: last.latitude,
+            longitude: last.longitude,
+            accuracyMeters: last.accuracy,
+            source: LocationFixSource.platformLastKnown,
+          );
+        }
+        return null;
+      }
+
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm != LocationPermission.whileInUse && perm != LocationPermission.always) {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          return LocationFix(
+            latitude: last.latitude,
+            longitude: last.longitude,
+            accuracyMeters: last.accuracy,
+            source: LocationFixSource.platformLastKnown,
+          );
+        }
+        return null;
+      }
+
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        ).timeout(timeout);
+        return LocationFix(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          accuracyMeters: pos.accuracy,
+          source: LocationFixSource.freshGps,
+        );
+      } catch (_) {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          return LocationFix(
+            latitude: last.latitude,
+            longitude: last.longitude,
+            accuracyMeters: last.accuracy,
+            source: LocationFixSource.platformLastKnown,
+          );
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 }
 

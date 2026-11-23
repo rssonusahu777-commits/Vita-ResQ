@@ -83,7 +83,7 @@ class StatusBadge extends StatelessWidget {
       case DetectionSource.manualSos:
       case DetectionSource.manualHelp:
         return StatusBadge(
-          label: 'MANUAL SOS',
+          label: 'MANUAL HELP',
           icon: Icons.touch_app_rounded,
           foregroundColor: AppColors.criticalDanger,
           backgroundColor: AppColors.criticalDanger.withValues(alpha: 0.12),

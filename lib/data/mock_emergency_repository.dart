@@ -82,20 +82,21 @@ abstract class EmergencyRepository {
 /// In-memory mock repository populated with realistic Indian emergency scenarios.
 class MockEmergencyRepository implements EmergencyRepository {
   final List<Emergency> _emergencies = [];
+  List<Emergency> get emergenciesSync => List<Emergency>.unmodifiable(_emergencies);
   late final StreamController<List<Emergency>> _emergenciesController;
   late final StreamController<Responder> _responderController;
 
   Responder _currentUserResponder = const Responder(
     id: 'RSP-IND-4091',
-    name: 'ayush patnayak',
-    distanceMeters: 380,
-    etaMinutes: 2,
-    isVerified: true,
-    points: 1420,
+    name: 'Citizen Volunteer',
+    distanceMeters: 0,
+    etaMinutes: 0,
+    isVerified: false,
+    points: 0,
     badgeLevel: 'Citizen Volunteer',
-    completedResponses: 28,
+    completedResponses: 0,
     isAvailable: true,
-    phoneNumber: '6265915661',
+    phoneNumber: '',
   );
 
   MockEmergencyRepository() {
@@ -115,7 +116,7 @@ class MockEmergencyRepository implements EmergencyRepository {
         locationLabel: 'Sector 4, Community Axis, Raipur',
         type: EmergencyType.medical,
         createdAt: DateTime.now().subtract(const Duration(minutes: 2)),
-        detectionSource: DetectionSource.manualSos,
+        detectionSource: DetectionSource.manualHelp,
         status: EmergencyStatus.alerting,
         communicationMode: CommunicationMode.online,
         isSyncedToCloud: true,
@@ -160,7 +161,7 @@ class MockEmergencyRepository implements EmergencyRepository {
         locationLabel: 'Station Road Market, Raipur',
         type: EmergencyType.personalSafety,
         createdAt: DateTime.now().subtract(const Duration(minutes: 11)),
-        detectionSource: DetectionSource.manualSos,
+        detectionSource: DetectionSource.manualHelp,
         status: EmergencyStatus.alerting,
         communicationMode: CommunicationMode.offlineNearby,
         isSyncedToCloud: false,
@@ -186,8 +187,9 @@ class MockEmergencyRepository implements EmergencyRepository {
   }
 
   @override
-  Stream<List<Emergency>> watchActiveEmergencies() {
-    return _emergenciesController.stream;
+  Stream<List<Emergency>> watchActiveEmergencies() async* {
+    yield List<Emergency>.unmodifiable(_emergencies);
+    yield* _emergenciesController.stream;
   }
 
   @override
@@ -201,8 +203,13 @@ class MockEmergencyRepository implements EmergencyRepository {
   }
 
   @override
-  Stream<Emergency?> watchEmergency(String id) {
-    return _emergenciesController.stream.map((list) {
+  Stream<Emergency?> watchEmergency(String id) async* {
+    try {
+      yield _emergencies.firstWhere((e) => e.id == id);
+    } catch (_) {
+      yield null;
+    }
+    yield* _emergenciesController.stream.map((list) {
       try {
         return list.firstWhere((e) => e.id == id);
       } catch (_) {
@@ -405,9 +412,10 @@ class MockEmergencyRepository implements EmergencyRepository {
   }
 
   @override
-  Stream<Responder> watchCurrentUserResponder() {
+  Stream<Responder> watchCurrentUserResponder() async* {
     // Send immediate current state followed by subsequent updates
-    return _responderController.stream;
+    yield _currentUserResponder;
+    yield* _responderController.stream;
   }
 
   @override

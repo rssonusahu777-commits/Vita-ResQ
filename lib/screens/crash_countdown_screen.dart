@@ -181,7 +181,7 @@ class _CrashCountdownScreenState extends State<CrashCountdownScreen>
                       const SizedBox(height: 10),
 
                       Text(
-                        'Sudden high-impact pattern detected. Are you safe? A critical SOS broadcast will dispatch if uncancelled.',
+                        'Sudden high-impact pattern detected. Are you safe? A critical HELP broadcast will dispatch if uncancelled.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,

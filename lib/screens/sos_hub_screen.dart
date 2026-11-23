@@ -4,11 +4,13 @@ import 'package:flutter/services.dart';
 import '../core/theme/app_theme.dart';
 import '../data/mock_emergency_repository.dart';
 import '../models/emergency.dart';
+import '../services/connectivity_service.dart';
+import '../services/location_service.dart';
 import 'active_emergency_screen.dart';
 import 'crash_detection_screen.dart';
 import 'responder_alerts_screen.dart';
 
-/// Clean, Light Theme Home & SOS Hub Screen
+/// Clean, Light Theme Home & HELP Hub Screen
 class SosHubScreen extends StatefulWidget {
   final EmergencyRepository repository;
 
@@ -22,7 +24,7 @@ class SosHubScreen extends StatefulWidget {
 }
 
 class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMixin {
-  // Reachability state (toggleable for UI preview)
+  // Reachability state (synced with real connectivity & probe)
   CommunicationMode _communicationMode = CommunicationMode.online;
 
   // Selected Emergency Type
@@ -34,12 +36,13 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
   // Crash Guard monitoring state
   final bool _isCrashGuardActive = true;
 
-  // Indian coordinates (readable even offline without map tiles)
-  static const double _currentLatitude = 21.1619;
-  static const double _currentLongitude = 81.7869;
-  static const String _currentLocationLabel = 'Sector 4, Community Axis, Raipur / Central Hub';
+  // Hardware/cached GPS coordinates (never stuck at 0,0)
+  double _currentLatitude = 21.1619;
+  double _currentLongitude = 81.7869;
+  String _currentLocationLabel = 'Sector 4, Community Axis, Raipur / Central Hub';
+  StreamSubscription<bool>? _connectivitySub;
 
-  // SOS button press & hold state
+  // HELP button press & hold state
   late final AnimationController _holdController;
   late final AnimationController _pulseController;
   bool _isHolding = false;
@@ -48,7 +51,10 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
   void initState() {
     super.initState();
 
-    // 2-second hold controller for tactile SOS press
+    _initGps();
+    _initConnectivity();
+
+    // 2-second hold controller for tactile HELP press
     _holdController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -61,7 +67,7 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
     _holdController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         HapticFeedback.heavyImpact();
-        _triggerSosDispatch();
+        _triggerHelpDispatch();
       }
     });
 
@@ -70,6 +76,42 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
       vsync: this,
       duration: const Duration(milliseconds: 2200),
     )..repeat();
+  }
+
+  Future<void> _initGps() async {
+    try {
+      final fix = await LocationService.acquireBestAvailableFix();
+      if (mounted && fix != null) {
+        setState(() {
+          _currentLatitude = fix.latitude;
+          _currentLongitude = fix.longitude;
+          _currentLocationLabel =
+              '${fix.latitude.toStringAsFixed(4)}, ${fix.longitude.toStringAsFixed(4)} (GPS Fix Locked)';
+          _isGpsAvailable = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('GPS fix acquisition fallback in SosHub: $e');
+    }
+  }
+
+  void _initConnectivity() {
+    _connectivitySub = ConnectivityService().isOnline.listen((isOnline) {
+      if (mounted) {
+        setState(() {
+          _communicationMode =
+              isOnline ? CommunicationMode.online : CommunicationMode.offlineNearby;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySub?.cancel();
+    _holdController.dispose();
+    _pulseController.dispose();
+    super.dispose();
   }
 
   void _toggleCommunicationMode() {
@@ -152,7 +194,7 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
     );
   }
 
-  Future<void> _triggerSosDispatch() async {
+  Future<void> _triggerHelpDispatch() async {
     _holdController.reset();
     setState(() {
       _isHolding = false;
@@ -169,9 +211,9 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
       longitude: _currentLongitude,
       locationLabel: _currentLocationLabel,
       type: _selectedType,
-      detectionSource: DetectionSource.manualSos,
+      detectionSource: DetectionSource.manualHelp,
       communicationMode: _communicationMode,
-      notes: 'Immediate SOS triggered with raw hardware GPS broadcast.',
+      notes: 'Immediate HELP triggered with raw hardware GPS broadcast.',
     );
 
     if (!mounted) return;
@@ -310,13 +352,6 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
 
 
   @override
-  void dispose() {
-    _holdController.dispose();
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final isOnline = _communicationMode == CommunicationMode.online;
 
@@ -350,7 +385,7 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: Text(
-                    'Hold the button below to dispatch an SOS to nearby community responders and emergency contacts.',
+                    'Hold the button below to dispatch HELP to nearby community responders and emergency contacts.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12.5,
@@ -364,9 +399,9 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
           ),
           const SizedBox(height: 14),
 
-          // 4. LARGE CIRCULAR SOS BUTTON WITH TACTILE HOLD ARC
+          // 4. LARGE CIRCULAR HELP BUTTON WITH TACTILE HOLD ARC
           Center(
-            child: _buildSosTriggerArea(),
+            child: _buildHelpTriggerArea(),
           ),
           const SizedBox(height: 16),
 
@@ -955,8 +990,8 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
     );
   }
 
-  // Large Circular SOS Trigger Area with Tactile Animated Hold Arc
-  Widget _buildSosTriggerArea() {
+  // Large Circular HELP Trigger Area with Tactile Animated Hold Arc
+  Widget _buildHelpTriggerArea() {
     return GestureDetector(
       onTapDown: (_) => _startHolding(),
       onTapUp: (_) => _cancelHolding(),
@@ -983,7 +1018,7 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
             ),
           ),
 
-          // Animated Circular Progress Arc wrapping the SOS button
+          // Animated Circular Progress Arc wrapping the HELP button
           SizedBox(
             width: 154,
             height: 154,
@@ -1024,7 +1059,7 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
                 const Icon(Icons.shield_rounded, size: 28, color: Colors.white),
                 const SizedBox(height: 2),
                 const Text(
-                  'SOS',
+                  'HELP',
                   style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w900,

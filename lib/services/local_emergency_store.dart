@@ -49,6 +49,7 @@ abstract class _HiveKeys {
   static const String lastKnownLat = 'last_known_lat';
   static const String lastKnownLng = 'last_known_lng';
   static const String lastKnownAccuracy = 'last_known_accuracy';
+  static const String cameraMicOptIn = 'camera_mic_opt_in';
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +285,18 @@ class LocalEmergencyStore {
       'longitude': lng,
       'accuracyMeters': accuracy,
     };
+  }
+
+  /// Persists one-time Camera + Microphone opt-in choice
+  Future<void> setCameraMicOptIn(bool optedIn) async {
+    if (_metaBox == null) return;
+    await _meta.put(_HiveKeys.cameraMicOptIn, optedIn);
+  }
+
+  /// Retrieves one-time Camera + Microphone opt-in preference
+  bool isCameraMicOptedIn() {
+    if (_metaBox == null) return false;
+    return (_meta.get(_HiveKeys.cameraMicOptIn) as bool?) ?? false;
   }
 
   // ---------------------------------------------------------------------------

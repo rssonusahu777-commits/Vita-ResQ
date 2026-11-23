@@ -11,7 +11,7 @@ enum EmergencyStatus {
   cancelled,
 }
 
-/// How the incident was triggered
+/// How the incident was triggered (strictly HELP-based, Rule #10)
 enum DetectionSource {
   manualSos,
   manualHelp,
@@ -37,6 +37,15 @@ enum EmergencyType {
   other,
 }
 
+/// Optional apparent severity estimation from multimodal AI background analysis
+/// Framed strictly as apparent context estimation, NEVER guaranteed medical diagnosis.
+enum EmergencySeverity {
+  low,
+  moderate,
+  high,
+  critical,
+}
+
 /// Immutable Core Emergency Model for Vindara
 class Emergency {
   final String id;
@@ -60,6 +69,12 @@ class Emergency {
   final String? notes;
   final String? victimPhone;
 
+  // Multimodal AI enrichment fields (Rule #1: asynchronous & non-blocking)
+  final EmergencySeverity? severity;
+  final double? responsivenessScore; // 0.0 (unresponsive) to 1.0 (fully responsive)
+  final String? aiContextSummary;    // Apparent situation context estimation
+  final List<String> recommendedSkills; // e.g. ['first_aid', 'cpr', 'rescue']
+
   const Emergency({
     required this.id,
     required this.victimName,
@@ -81,6 +96,10 @@ class Emergency {
     this.standbyResponderId,
     this.notes,
     this.victimPhone,
+    this.severity,
+    this.responsivenessScore,
+    this.aiContextSummary,
+    this.recommendedSkills = const [],
   });
 
   String get effectiveVictimId => victimId ?? id;
@@ -149,6 +168,10 @@ class Emergency {
     bool clearStandbyResponderId = false,
     String? notes,
     String? victimPhone,
+    EmergencySeverity? severity,
+    double? responsivenessScore,
+    String? aiContextSummary,
+    List<String>? recommendedSkills,
   }) {
     return Emergency(
       id: id ?? this.id,
@@ -179,6 +202,10 @@ class Emergency {
           : (standbyResponderId ?? this.standbyResponderId),
       notes: notes ?? this.notes,
       victimPhone: victimPhone ?? this.victimPhone,
+      severity: severity ?? this.severity,
+      responsivenessScore: responsivenessScore ?? this.responsivenessScore,
+      aiContextSummary: aiContextSummary ?? this.aiContextSummary,
+      recommendedSkills: recommendedSkills ?? this.recommendedSkills,
     );
   }
 
@@ -225,6 +252,10 @@ class Emergency {
       'version': version,
       'notes': notes,
       'victimPhone': victimPhone,
+      if (severity != null) 'severity': severity!.name,
+      if (responsivenessScore != null) 'responsivenessScore': responsivenessScore,
+      if (aiContextSummary != null) 'aiContextSummary': aiContextSummary,
+      if (recommendedSkills.isNotEmpty) 'recommendedSkills': recommendedSkills,
     };
   }
 
@@ -239,7 +270,7 @@ class Emergency {
     DetectionSource parseSource(String raw) {
       return DetectionSource.values.firstWhere(
         (e) => e.name == raw,
-        orElse: () => DetectionSource.manualSos,
+        orElse: () => DetectionSource.manualHelp,
       );
     }
 
@@ -254,6 +285,14 @@ class Emergency {
       return CommunicationMode.values.firstWhere(
         (e) => e.name == raw,
         orElse: () => CommunicationMode.online,
+      );
+    }
+
+    EmergencySeverity? parseSeverity(String? raw) {
+      if (raw == null) return null;
+      return EmergencySeverity.values.firstWhere(
+        (e) => e.name == raw,
+        orElse: () => EmergencySeverity.moderate,
       );
     }
 
@@ -279,7 +318,7 @@ class Emergency {
       locationLabel: label,
       type: parseType(json['type'] as String? ?? 'medical'),
       createdAt: createdAt,
-      detectionSource: parseSource(json['detectionSource'] as String? ?? 'manualSos'),
+      detectionSource: parseSource(json['detectionSource'] as String? ?? 'manualHelp'),
       status: parseStatus(json['status'] as String? ?? 'created'),
       primaryResponderId: json['primaryResponderId'] as String?,
       standbyResponderId: json['standbyResponderId'] as String?,
@@ -288,6 +327,13 @@ class Emergency {
       version: (json['version'] as num?)?.toInt() ?? 1,
       notes: json['notes'] as String?,
       victimPhone: json['victimPhone'] as String?,
+      severity: parseSeverity(json['severity'] as String?),
+      responsivenessScore: (json['responsivenessScore'] as num?)?.toDouble(),
+      aiContextSummary: json['aiContextSummary'] as String?,
+      recommendedSkills: (json['recommendedSkills'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
     );
   }
 
@@ -304,6 +350,6 @@ class Emergency {
 
   @override
   String toString() {
-    return 'Emergency(id: $id, victim: $victimName, type: $type, status: $status, location: $locationLabel)';
+    return 'Emergency(id: $id, victim: $victimName, type: $type, status: $status, severity: $severity, location: $locationLabel)';
   }
 }

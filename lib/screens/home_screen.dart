@@ -106,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
       longitude: 77.5946 + (DateTime.now().millisecond % 50) * 0.001,
       locationLabel: 'MG Road Metro Station, Bengaluru',
       type: randomType,
-      detectionSource: isCrash ? DetectionSource.possibleCrash : DetectionSource.manualSos,
+      detectionSource: isCrash ? DetectionSource.possibleCrash : DetectionSource.manualHelp,
       communicationMode: CommunicationMode.online,
       notes: isCrash
           ? 'Automated accelerometer spike: Severe crash impact profile.'
@@ -223,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
         foregroundColor: Colors.white,
         icon: const Icon(Icons.warning_amber_rounded),
         label: const Text(
-          'SIMULATE SOS ALERT',
+          'SIMULATE HELP ALERT',
           style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5),
         ),
       ),
@@ -329,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 10),
           Row(
             children: [
-              _buildPaletteItem('SOS / CRITICAL', AppColors.criticalDanger),
+              _buildPaletteItem('HELP / CRITICAL', AppColors.criticalDanger),
               const SizedBox(width: 6),
               _buildPaletteItem('CRASH / STANDBY', AppColors.warning),
               const SizedBox(width: 6),

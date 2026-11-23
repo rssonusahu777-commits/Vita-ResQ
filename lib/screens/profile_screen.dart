@@ -1,7 +1,9 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../data/mock_emergency_repository.dart';
 import '../models/responder.dart';
+import '../services/local_emergency_store.dart';
 import 'edit_profile_screen.dart';
 import 'emergency_contacts_screen.dart';
 import 'notifications_screen.dart';
@@ -24,6 +26,21 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _spokenAlertsEnabled = true;
+  bool _cameraMicOptedIn = false;
+
+  User? _safeGetCurrentUser() {
+    try {
+      return FirebaseAuth.instance.currentUser;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _cameraMicOptedIn = LocalEmergencyStore().isCameraMicOptedIn();
+  }
 
   void _handleBack() {
     if (Navigator.of(context).canPop()) {
@@ -72,11 +89,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: FutureBuilder<Responder>(
         future: widget.repository.getCurrentUserResponder(),
         builder: (context, snapshot) {
+          final currentFirebaseUser = _safeGetCurrentUser();
           final responder = snapshot.data;
-          final displayName = responder?.name ?? 'ayush patnayak';
-          final phone = responder?.phoneNumber ?? '6265915661';
-          final bloodGroup = responder?.bloodGroup ?? 'A+';
+          final displayName = (responder != null && responder.name.isNotEmpty && responder.name != 'ayush patnayak')
+              ? responder.name
+              : (currentFirebaseUser?.displayName?.isNotEmpty == true
+                  ? currentFirebaseUser!.displayName!
+                  : 'Citizen Volunteer');
+          final phone = (responder != null && responder.phoneNumber?.isNotEmpty == true && responder.phoneNumber != '6265915661')
+              ? responder.phoneNumber!
+              : (currentFirebaseUser?.phoneNumber?.isNotEmpty == true
+                  ? currentFirebaseUser!.phoneNumber!
+                  : 'Not configured');
+          final bloodGroup = responder?.bloodGroup ?? 'Not specified';
           final badge = responder?.badgeLevel ?? 'Citizen Volunteer';
+          final userEmail = currentFirebaseUser?.email ?? 'Emergency Access (Offline Mode)';
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
@@ -143,9 +170,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    const Text(
-                      'ayushpatnayak07@gmail.com',
-                      style: TextStyle(
+                    Text(
+                      userEmail,
+                      style: const TextStyle(
                         fontSize: 13.5,
                         color: Color(0xFF6B7280),
                         fontWeight: FontWeight.w500,
@@ -264,7 +291,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       iconColor: const Color(0xFF1E293B),
                       iconBgColor: const Color(0xFFF1F5F9),
                       title: 'My Impact & Activity',
-                      subtitle: '28 Assists Logged • Community Trust',
+                      subtitle: '${responder?.completedResponses ?? 0} Assists Logged • Community Trust',
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
@@ -374,6 +401,135 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 20),
+
+              // 4. EMERGENCY AI & SENSOR PERMISSIONS Section
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 8),
+                child: Text(
+                  'EMERGENCY AI & SENSOR ASSIST',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFEAE8E3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0FDF4),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt_outlined,
+                        color: Color(0xFF16A34A),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'Camera & Mic Scene Assist',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Non-blocking 2.5s assessment after HELP to match skilled responders. Buffers are wiped instantly.',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: Color(0xFF6B7280),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Switch(
+                      value: _cameraMicOptedIn,
+                      activeTrackColor: const Color(0xFF16A34A),
+                      activeThumbColor: Colors.white,
+                      inactiveThumbColor: Colors.white,
+                      inactiveTrackColor: const Color(0xFFE5E7EB),
+                      onChanged: (val) async {
+                        await LocalEmergencyStore().setCameraMicOptIn(val);
+                        if (!context.mounted) return;
+                        setState(() => _cameraMicOptedIn = val);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              val
+                                  ? 'Emergency Camera & Mic Scene Assist enabled.'
+                                  : 'Emergency Camera & Mic Scene Assist disabled.',
+                            ),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+
+              if (currentFirebaseUser != null) ...[
+                const SizedBox(height: 24),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    try {
+                      await FirebaseAuth.instance.signOut();
+                    } catch (_) {}
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Signed out successfully.')),
+                      );
+                      setState(() {});
+                    }
+                  },
+                  icon: const Icon(Icons.logout_rounded, color: AppColors.primaryRed),
+                  label: const Text(
+                    'Sign Out',
+                    style: TextStyle(
+                      color: AppColors.primaryRed,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFFCA5A5)),
+                    backgroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ],
             ],
           );
         },

@@ -198,7 +198,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
           // Bold Title
           Text(
-            '${item.typeDisplayName.toUpperCase()} Emergency SOS',
+            '${item.typeDisplayName.toUpperCase()} Emergency HELP',
             style: const TextStyle(
               fontSize: 15.5,
               fontWeight: FontWeight.w800,

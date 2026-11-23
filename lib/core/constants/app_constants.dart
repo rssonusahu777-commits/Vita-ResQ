@@ -22,15 +22,16 @@ class AppConstants {
 
   // State Labels for UI Display
   static const String statusCreated = 'Registered';
-  static const String statusAlerting = 'Broadcasting SOS';
+  static const String statusAlerting = 'Broadcasting HELP';
   static const String statusAccepted = 'Responder Assigned';
   static const String statusInProgress = 'En Route / On Scene';
   static const String statusResolved = 'Resolved & Safe';
   static const String statusCancelled = 'False Alarm / Cancelled';
 
   // Detection Source Labels
-  static const String sourceManualSos = 'Manual SOS Alert';
-  static const String sourcePossibleCrash = 'High-G Crash Detected';
+  static const String sourceManualSos = 'Manual HELP Alert';
+  static const String sourceManualHelp = 'Manual HELP Alert';
+  static const String sourcePossibleCrash = 'Possible Crash Detected';
 
   // Communication Mode Labels
   static const String modeOnline = 'Cloud Connected';

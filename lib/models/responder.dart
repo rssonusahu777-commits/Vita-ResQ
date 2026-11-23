@@ -13,6 +13,7 @@ class Responder {
   final String bloodGroup;
   final String? emergencyNotes;
   final String? knownAllergies;
+  final List<String> skills; // e.g. ['first_aid', 'cpr', 'rescue']
 
   const Responder({
     required this.id,
@@ -28,6 +29,7 @@ class Responder {
     this.bloodGroup = 'A+',
     this.emergencyNotes,
     this.knownAllergies,
+    this.skills = const [],
   });
 
   Responder copyWith({
@@ -44,6 +46,7 @@ class Responder {
     String? bloodGroup,
     String? emergencyNotes,
     String? knownAllergies,
+    List<String>? skills,
   }) {
     return Responder(
       id: id ?? this.id,
@@ -59,6 +62,7 @@ class Responder {
       bloodGroup: bloodGroup ?? this.bloodGroup,
       emergencyNotes: emergencyNotes ?? this.emergencyNotes,
       knownAllergies: knownAllergies ?? this.knownAllergies,
+      skills: skills ?? this.skills,
     );
   }
 
@@ -105,7 +109,6 @@ class Responder {
 
   @override
   String toString() {
-    return 'Responder(id: $id, name: $name, distance: $formattedDistance, eta: $formattedEta, badge: $badgeLevel)';
+    return 'Responder(id: $id, name: $name, distance: $formattedDistance, eta: $formattedEta, badge: $badgeLevel, skills: $skills)';
   }
 }
-

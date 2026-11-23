@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../models/emergency.dart';
 import '../models/responder.dart';
+import '../models/user_profile.dart';
 import '../services/connectivity_service.dart';
 import '../services/firestore_emergency_service.dart';
 import '../services/local_emergency_store.dart';
@@ -119,7 +121,13 @@ class FirebaseEmergencyRepository implements EmergencyRepository {
   @override
   Stream<List<Emergency>> watchActiveEmergencies() {
     if (_isFirebaseReady) {
-      // Emit fallback initial data first, then remote updates
+      // Seed immediately with current local / fallback emergencies so listeners never hang
+      Future.microtask(() async {
+        if (!_activeEmergenciesController.isClosed) {
+          final list = await _fallbackRepo.getActiveEmergencies();
+          _activeEmergenciesController.add(list);
+        }
+      });
       return _activeEmergenciesController.stream;
     }
     return _fallbackRepo.watchActiveEmergencies();
@@ -328,7 +336,36 @@ class FirebaseEmergencyRepository implements EmergencyRepository {
   }
 
   @override
-  Future<Responder> getCurrentUserResponder() => _fallbackRepo.getCurrentUserResponder();
+  Future<Responder> getCurrentUserResponder() async {
+    if (_isFirebaseReady) {
+      try {
+        final authUser = FirebaseAuth.instance.currentUser;
+        if (authUser != null) {
+          final doc = await FirebaseFirestore.instance.collection('users').doc(authUser.uid).get();
+          if (doc.exists && doc.data() != null) {
+            final profile = UserProfile.fromJson(doc.data()!);
+            return Responder(
+              id: profile.uid,
+              name: profile.displayName.isNotEmpty
+                  ? profile.displayName
+                  : (authUser.email?.split('@').first ?? 'Citizen Volunteer'),
+              distanceMeters: 0,
+              etaMinutes: 0,
+              isVerified: profile.isVerifiedResponder,
+              points: profile.reputationPoints,
+              badgeLevel: profile.isVerifiedResponder ? 'Verified Responder' : 'Citizen Volunteer',
+              completedResponses: profile.successfulAssistanceCount,
+              isAvailable: profile.isAvailable,
+              phoneNumber: authUser.phoneNumber,
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('Failed to load user responder from Firestore: $e');
+      }
+    }
+    return _fallbackRepo.getCurrentUserResponder();
+  }
 
   @override
   Stream<Responder> watchCurrentUserResponder() => _fallbackRepo.watchCurrentUserResponder();

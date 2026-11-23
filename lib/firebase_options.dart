@@ -28,28 +28,27 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyPlaceholder-Vindara-Android-Key',
-    appId: '1:325236805162:android:com.vindara.app',
-    messagingSenderId: '325236805162',
+    apiKey: 'AIzaSyCpw7Qwe5S_VX-x3VOwkFKGwj-MAfnt5Is',
+    appId: '1:46771632912:android:18d8ff3e8666d4d6f1c395',
+    messagingSenderId: '46771632912',
     projectId: 'vindara-d3d93',
-    storageBucket: 'vindara-d3d93.appspot.com',
+    storageBucket: 'vindara-d3d93.firebasestorage.app',
   );
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyPlaceholder-Vindara-Web-Key',
-    appId: '1:325236805162:web:vindara',
-    messagingSenderId: '325236805162',
+    apiKey: 'AIzaSyCpw7Qwe5S_VX-x3VOwkFKGwj-MAfnt5Is',
+    appId: '1:46771632912:web:vindara',
+    messagingSenderId: '46771632912',
     projectId: 'vindara-d3d93',
-    storageBucket: 'vindara-d3d93.appspot.com',
+    storageBucket: 'vindara-d3d93.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyPlaceholder-Vindara-iOS-Key',
-    appId: '1:325236805162:ios:com.vindara.app',
-    messagingSenderId: '325236805162',
+    apiKey: 'AIzaSyCpw7Qwe5S_VX-x3VOwkFKGwj-MAfnt5Is',
+    appId: '1:46771632912:ios:com.vindara.app',
+    messagingSenderId: '46771632912',
     projectId: 'vindara-d3d93',
-    storageBucket: 'vindara-d3d93.appspot.com',
+    storageBucket: 'vindara-d3d93.firebasestorage.app',
     iosBundleId: 'com.vindara.app',
   );
 }
-

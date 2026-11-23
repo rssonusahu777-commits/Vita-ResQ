@@ -140,14 +140,16 @@ class _MainShellState extends State<MainShell> {
               future: widget.repository.getCurrentUserResponder(),
               builder: (context, snapshot) {
                 final responder = snapshot.data;
-                final name = responder?.name ?? 'ayush patnayak';
+                final name = (responder != null && responder.name.isNotEmpty && responder.name != 'ayush patnayak')
+                    ? responder.name
+                    : 'Citizen Volunteer';
                 final role = responder?.badgeLevel ?? 'Citizen Volunteer';
 
                 // Initials from name
                 final parts = name.trim().split(RegExp(r'\s+'));
                 final initials = parts.length > 1
                     ? '${parts.first[0]}${parts.last[0]}'.toUpperCase()
-                    : (parts.isNotEmpty && parts.first.isNotEmpty ? parts.first[0].toUpperCase() : 'AP');
+                    : (parts.isNotEmpty && parts.first.isNotEmpty ? parts.first[0].toUpperCase() : 'CV');
 
                 return Container(
                   color: const Color(0xFFFAF9F6),

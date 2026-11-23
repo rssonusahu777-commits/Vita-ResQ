@@ -232,3 +232,13 @@ No victim name, no phone number, no address, no coordinates. Sensitive details r
 | **6** ✅ | Possible crash detection (sensors_plus), 10s countdown, profile & home monitoring controls |
 | **7** ✅ | Nearby offline device-to-device relay, responder rewards, hybrid OSM/offline distance card |
 | **8** ✅ | Production Firestore security rules, composite indexes, Teammate AI integration contract, v1.0.0 release |
+
+---
+
+## 8. Living Feature Manual & Changelog Rule
+
+> [!IMPORTANT]
+> **Mandatory Rule for Developers & AI Agents:**  
+> All feature descriptions, architectural contracts, and historical versions are documented in [`docs/FEATURES_AND_CHANGELOG.md`](FEATURES_AND_CHANGELOG.md).  
+> Whenever any feature, enhancement, or bug fix is implemented, the developer or AI agent **MUST** update [`docs/FEATURES_AND_CHANGELOG.md`](FEATURES_AND_CHANGELOG.md) in the same turn/commit.
+

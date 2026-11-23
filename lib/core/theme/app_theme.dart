@@ -21,7 +21,7 @@ class AppColors {
   static const Color textTertiary = Color(0xFF9CA3AF);
   static const Color textMuted = Color(0xFFD1D5DB);
 
-  // Semantic Primary SOS Red
+  // Semantic Primary HELP Red
   static const Color primaryRed = Color(0xFFDC2626); // Strong Red
   static const Color primaryRedLight = Color(0xFFFEE2E2); // Soft Rose Pill Tint
   static const Color criticalDanger = Color(0xFFDC2626);

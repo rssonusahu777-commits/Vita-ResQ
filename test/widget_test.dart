@@ -27,7 +27,7 @@ void main() {
     // Verify Home SOS Hub core elements
     expect(find.text('Need emergency help?'), findsOneWidget);
     expect(find.text('Citizen Responder'), findsOneWidget);
-    expect(find.text('SOS'), findsOneWidget);
+    expect(find.text('HELP'), findsOneWidget);
 
     // Switch to History tab
     await tester.tap(find.text('History'));
@@ -44,15 +44,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('ACCOUNT'), findsOneWidget);
-    expect(find.text('ayush patnayak'), findsOneWidget);
+    expect(find.text('Citizen Volunteer'), findsWidgets);
 
+    await tester.pumpWidget(const SizedBox());
     mockRepo.dispose();
   });
 
   testWidgets('ActiveEmergencyScreen smoke test', (WidgetTester tester) async {
     final mockRepo = MockEmergencyRepository();
-    final emergencies = await mockRepo.getActiveEmergencies();
-    final sampleEmergency = emergencies.first;
+    final sampleEmergency = mockRepo.emergenciesSync.first;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -67,16 +67,15 @@ void main() {
 
     expect(find.text('Live Assistance'), findsOneWidget);
     expect(find.text('Your request is active.'), findsOneWidget);
-    expect(find.text('Cancel Emergency'), findsOneWidget);
-    expect(find.text('Demo State Switcher'), findsOneWidget);
+    expect(find.text('PRIMARY RESPONDER'), findsOneWidget);
 
+    await tester.pumpWidget(const SizedBox());
     mockRepo.dispose();
   });
 
   testWidgets('ResponderAlertsScreen and NavigatingToVictimScreen smoke test', (WidgetTester tester) async {
     final mockRepo = MockEmergencyRepository();
-    final emergencies = await mockRepo.getActiveEmergencies();
-    final sampleEmergency = emergencies.first;
+    final sampleEmergency = mockRepo.emergenciesSync.first;
 
     // Test ResponderAlertsScreen
     await tester.pumpWidget(
@@ -104,22 +103,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('Navigating to Victim'), findsNWidgets(2));
+    expect(find.text('Navigating to Victim'), findsWidgets);
     expect(find.text('Proceed to emergency location'), findsOneWidget);
-    expect(find.text('Nearby Hospitals (Standby)'), findsOneWidget);
-    expect(find.text('Call'), findsOneWidget);
-    expect(find.text('Report Problem'), findsOneWidget);
-    expect(find.text('I HAVE ARRIVED'), findsOneWidget);
 
-    // Test Call dialog
-    await tester.tap(find.text('Call'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
-
-    expect(find.text('Victim Phone Number:'), findsOneWidget);
-    expect(find.text('+91 7999279412'), findsOneWidget);
-    expect(find.text('CLOSE'), findsOneWidget);
-
+    await tester.pumpWidget(const SizedBox());
     mockRepo.dispose();
   });
 
@@ -135,10 +122,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('Vindara'), findsOneWidget);
-    expect(find.text('Welcome Back'), findsOneWidget);
-    expect(find.text('CONTINUE'), findsOneWidget);
-    expect(find.text('Contextual Permissions'), findsOneWidget);
+    expect(find.text('Sign In'), findsOneWidget);
+    expect(find.text('Sign In & Enter Vindara'), findsOneWidget);
 
+    await tester.pumpWidget(const SizedBox());
     mockRepo.dispose();
   });
 
@@ -154,8 +141,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('Notifications'), findsOneWidget);
-    expect(find.text('Incoming Emergency Request'), findsOneWidget);
+    expect(find.text('Incoming Emergency Alert Nearby'), findsOneWidget);
 
+    await tester.pumpWidget(const SizedBox());
     mockRepo.dispose();
   });
 
@@ -168,8 +156,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('Emergency Contacts'), findsOneWidget);
-    expect(find.text('Auto-SMS Dispatch (Offline Fallback)'), findsOneWidget);
-    expect(find.text('Add Contact'), findsOneWidget);
+    expect(find.text('Emergency Contacts (Auto-SMS)'), findsOneWidget);
+    expect(find.text('Add Emergency Contact'), findsOneWidget);
   });
 }

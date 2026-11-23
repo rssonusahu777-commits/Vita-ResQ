@@ -40,8 +40,10 @@ class CertificatesScreen extends StatelessWidget {
         future: repository.getCurrentUserResponder(),
         builder: (context, snapshot) {
           final responder = snapshot.data;
-          final userName = responder?.name ?? 'ayush patnayak';
-          final completed = responder?.completedResponses ?? 28;
+          final userName = (responder != null && responder.name.isNotEmpty && responder.name != 'ayush patnayak')
+              ? responder.name
+              : 'Citizen Volunteer';
+          final completed = responder?.completedResponses ?? 0;
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 28),
@@ -274,14 +276,18 @@ class CertificatesScreen extends StatelessWidget {
                     const Divider(height: 1, color: Color(0xFFF1F0EC)),
                     _buildMilestoneRow(
                       title: 'Active Community Responder (25+ Assists)',
-                      subtitle: 'Achieved 28 logged community assists in Raipur Sector 4.',
-                      isUnlocked: true,
+                      subtitle: completed >= 25
+                          ? 'Achieved $completed logged community assists in local area.'
+                          : 'In Progress: $completed of 25 assists logged.',
+                      isUnlocked: completed >= 25,
                     ),
                     const Divider(height: 1, color: Color(0xFFF1F0EC)),
                     _buildMilestoneRow(
                       title: 'Mesh Anchor Responder (50+ Assists)',
-                      subtitle: 'In Progress: 28 of 50 assists completed towards network anchor status.',
-                      isUnlocked: false,
+                      subtitle: completed >= 50
+                          ? 'Achieved $completed logged community assists (Network Anchor).'
+                          : 'In Progress: $completed of 50 assists completed towards network anchor status.',
+                      isUnlocked: completed >= 50,
                     ),
                   ],
                 ),

@@ -102,3 +102,13 @@ firebase deploy --only functions
 Refer to [`docs/TEAMMATE_AI_CONTRACT.md`](docs/TEAMMATE_AI_CONTRACT.md) for specifications on adding:
 - Multimodal Camera/Mic Severity Estimation.
 - Mathematical Responder Ranking Engine (`functions/index.js`).
+
+---
+
+## Living Feature Manual & Changelog Rule
+
+> [!IMPORTANT]
+> **Mandatory Rule for Developers & AI Agents:**  
+> All project features and history are cataloged in [`docs/FEATURES_AND_CHANGELOG.md`](docs/FEATURES_AND_CHANGELOG.md).  
+> Every developer and AI agent modifying this codebase **MUST** update [`docs/FEATURES_AND_CHANGELOG.md`](docs/FEATURES_AND_CHANGELOG.md) in the same turn/commit whenever any feature, enhancement, or bug fix is implemented.
+

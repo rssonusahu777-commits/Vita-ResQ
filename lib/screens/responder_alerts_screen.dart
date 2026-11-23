@@ -51,7 +51,7 @@ class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'CRITICAL SOS NEAR YOU',
+                'CRITICAL HELP NEAR YOU',
                 style: TextStyle(
                   fontSize: 14.5,
                   fontWeight: FontWeight.w900,
@@ -83,7 +83,7 @@ class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              '${emergency.victimName} triggered SOS at ${emergency.locationLabel}.',
+              '${emergency.victimName} triggered HELP at ${emergency.locationLabel}.',
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,

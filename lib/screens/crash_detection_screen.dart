@@ -259,7 +259,7 @@ class _CrashDetectionScreenState extends State<CrashDetectionScreen> {
                 _buildRuleItem(
                   title: 'Automated Failover Broadcast',
                   value: 'Cloud + Offline Mesh',
-                  subtitle: 'If countdown expires without cancellation, broadcasts SOS with raw GPS coordinates.',
+                  subtitle: 'If countdown expires without cancellation, broadcasts HELP with raw GPS coordinates.',
                 ),
               ],
             ),

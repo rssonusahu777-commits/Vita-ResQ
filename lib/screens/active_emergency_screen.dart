@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../core/theme/app_theme.dart';
 import '../data/mock_emergency_repository.dart';
 import '../models/emergency.dart';
+import '../services/location_service.dart';
 
 /// Clean, Light Theme Live Assistance & Active Emergency Screen
 class ActiveEmergencyScreen extends StatefulWidget {
@@ -22,6 +23,28 @@ class ActiveEmergencyScreen extends StatefulWidget {
 class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> {
   bool _isDemoExpanded = false;
   bool _isHospitalDirectoryAvailable = true;
+  bool _isAcquiringGps = false;
+
+  void _checkAndAcquireGpsIfNeeded(Emergency emergency) {
+    if (emergency.latitude == 0.0 && emergency.longitude == 0.0 && !_isAcquiringGps) {
+      _isAcquiringGps = true;
+      LocationService.acquireBestAvailableFix().then((fix) {
+        if (mounted && fix != null && (fix.latitude != 0.0 || fix.longitude != 0.0)) {
+          final updated = emergency.copyWith(
+            latitude: fix.latitude,
+            longitude: fix.longitude,
+            locationLabel:
+                '${fix.latitude.toStringAsFixed(4)}, ${fix.longitude.toStringAsFixed(4)} (Acquired Fix)',
+          );
+          widget.repository.updateEmergency(updated);
+        }
+      }).catchError((e) {
+        debugPrint('ActiveEmergencyScreen GPS acquire error: $e');
+      }).whenComplete(() {
+        _isAcquiringGps = false;
+      });
+    }
+  }
 
   void _copyCoordinates(Emergency emergency) {
     Clipboard.setData(ClipboardData(text: emergency.formattedCoordinates));
@@ -176,7 +199,9 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> {
 
   // Top Map Split View
   Widget _buildTopMapSplitView(Emergency emergency) {
+    _checkAndAcquireGpsIfNeeded(emergency);
     final hasPrimary = emergency.primaryResponder != null;
+    final isGpsZero = emergency.latitude == 0.0 && emergency.longitude == 0.0;
 
     return Container(
       height: 190,
@@ -278,20 +303,28 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.gps_fixed_rounded, size: 13, color: AppColors.officialBlue),
+                      Icon(
+                        isGpsZero ? Icons.gps_not_fixed_rounded : Icons.gps_fixed_rounded,
+                        size: 13,
+                        color: isGpsZero ? AppColors.warningAmber : AppColors.officialBlue,
+                      ),
                       const SizedBox(width: 6),
                       Text(
-                        '${emergency.latitude.toStringAsFixed(4)}, ${emergency.longitude.toStringAsFixed(4)} (GPS Coordinates)',
+                        isGpsZero
+                            ? 'Acquiring Satellite GPS Fix...'
+                            : '${emergency.latitude.toStringAsFixed(4)}, ${emergency.longitude.toStringAsFixed(4)} (GPS Coordinates)',
                         style: AppTheme.tabularNumericStyle.copyWith(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
+                          color: isGpsZero ? AppColors.warningAmber : AppColors.textPrimary,
                         ),
                       ),
                     ],
                   ),
                   Text(
-                    emergency.communicationMode == CommunicationMode.online ? 'Online' : 'Mesh Relay',
+                    emergency.communicationMode == CommunicationMode.online
+                        ? 'Online (Cloud Dispatch)'
+                        : 'Offline (Peer Mesh Relay)',
                     style: TextStyle(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w800,
