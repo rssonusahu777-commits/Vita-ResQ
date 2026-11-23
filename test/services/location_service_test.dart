@@ -93,8 +93,7 @@ void main() {
         () async {
       // No cache seeded. On test env platform returns null too.
       // Result should be null (not a throw).
-      final fix = await service.tryGetPlatformLastKnown();
-      // May be null or a real position on a device; we just check no exception.
+      await service.tryGetPlatformLastKnown();
       expect(() async => await service.tryGetPlatformLastKnown(), returnsNormally);
     });
   });

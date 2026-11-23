@@ -207,7 +207,7 @@ class _EmergencyDetailScreenState extends ConsumerState<EmergencyDetailScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: badgeColor.withOpacity(0.12),
+                    color: badgeColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: badgeColor, width: 1.5),
                   ),

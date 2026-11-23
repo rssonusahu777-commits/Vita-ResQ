@@ -13,6 +13,8 @@ import 'package:vindara/services/firestore_emergency_service.dart';
 // Mocks
 // ---------------------------------------------------------------------------
 
+// ignore_for_file: subtype_of_sealed_class
+
 class MockFirebaseFirestore extends Mock implements FirebaseFirestore {}
 class MockCollectionReference extends Mock
     implements CollectionReference<Map<String, dynamic>> {}

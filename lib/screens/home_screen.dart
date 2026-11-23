@@ -195,7 +195,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: VindaraTheme.emergencyRed.withOpacity(0.35),
+                        color: VindaraTheme.emergencyRed.withValues(alpha: 0.35),
                         blurRadius: 24,
                         spreadRadius: 4,
                         offset: const Offset(0, 8),
@@ -312,7 +312,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           border: Border.all(color: Colors.grey.shade300),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -534,7 +534,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         border: Border(top: BorderSide(color: Colors.grey.shade300)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 10,
             offset: const Offset(0, -2),
           ),

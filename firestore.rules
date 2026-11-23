@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // -------------------------------------------------------------------------
+    // Users Collection
+    // -------------------------------------------------------------------------
+    match /users/{uid} {
+      // Any authenticated user can read responder profiles to coordinate assistance
+      allow read: if isAuthenticated();
+
+      // Users can create their own profile document with non-privileged defaults
+      allow create: if isOwner(uid)
+        && request.resource.data.keys().hasAll(['uid', 'displayName'])
+        && request.resource.data.uid == uid
+        && (!('reputationPoints' in request.resource.data) || request.resource.data.reputationPoints == 0)
+        && (!('successfulAssistanceCount' in request.resource.data) || request.resource.data.successfulAssistanceCount == 0)
+        && (!('responseHistoryCount' in request.resource.data) || request.resource.data.responseHistoryCount == 0)
+        && (!('badges' in request.resource.data) || request.resource.data.badges.size() == 0)
+        && (!('isVerifiedResponder' in request.resource.data) || request.resource.data.isVerifiedResponder == false);
+
+      // Users can update their own non-privileged profile fields (displayName, isAvailable, fcmToken),
+      // but privileged reputation/verification fields can ONLY be changed via server-side Admin SDK.
+      allow update: if isOwner(uid)
+        && request.resource.data.uid == resource.data.uid
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              'reputationPoints',
+              'successfulAssistanceCount',
+              'responseHistoryCount',
+              'badges',
+              'isVerifiedResponder'
+            ]));
+
+      // Profile deletion is disallowed to preserve historical responder trust records
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Emergencies Collection
+    // -------------------------------------------------------------------------
+    match /emergencies/{emergencyId} {
+      // Any authenticated victim or responder can read emergencies to coordinate response
+      allow read: if isAuthenticated();
+
+      // Creation rules:
+      // - Must be created by the authenticated victim
+      // - ID must match canonical EMG-2026-XXXXXXXX format
+      // - Initial status must be 'created' or 'alerting'
+      // - Version must be 1 or higher
+      allow create: if isAuthenticated()
+        && request.auth.uid == request.resource.data.victimId
+        && emergencyId.matches('^EMG-2026-[A-F0-9]{8}$')
+        && request.resource.data.status in ['created', 'alerting']
+        && request.resource.data.version >= 1
+        && request.resource.data.keys().hasAll([
+             'id', 'victimId', 'latitude', 'longitude', 'accuracyMeters',
+             'type', 'createdAt', 'detectionSource', 'status', 'version', 'communicationMode'
+           ]);
+
+      // Update rules:
+      // - Version must monotonically increase (optimistic concurrency guard)
+      // - Immutable core fields: victimId, createdAt, id cannot be modified
+      // - Only valid participants can mutate emergency state:
+      //   * The victim
+      //   * The assigned primary responder
+      //   * An unassigned eligible responder claiming primary (Rule #3)
+      //   * The assigned standby responder
+      //   * An unassigned responder claiming standby backup (Rule #3)
+      allow update: if isAuthenticated()
+        // Monotonic version increment
+        && request.resource.data.version > resource.data.version
+        // Immutability of core metadata
+        && request.resource.data.victimId == resource.data.victimId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.id == resource.data.id
+        // Participant permission check
+        && (
+          // Victim can update status (e.g. resolve, cancel)
+          request.auth.uid == resource.data.victimId ||
+          // Existing primary responder can update status / arrival
+          request.auth.uid == resource.data.primaryResponderId ||
+          // Unassigned responder claiming primary (Rule #3: atomic claim)
+          (resource.data.primaryResponderId == null && request.resource.data.primaryResponderId == request.auth.uid) ||
+          // Existing standby responder
+          request.auth.uid == resource.data.standbyResponderId ||
+          // Unassigned responder claiming standby backup (Rule #3: atomic claim)
+          (resource.data.standbyResponderId == null && request.resource.data.standbyResponderId == request.auth.uid)
+        );
+
+      // Explicitly DENY delete to preserve emergency audit integrity & accountability
+      allow delete: if false;
+    }
+  }
+}
