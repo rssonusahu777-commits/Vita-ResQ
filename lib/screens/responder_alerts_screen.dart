@@ -47,6 +47,7 @@ class _ResponderAlertsScreenState extends State<ResponderAlertsScreen> {
     });
     OfflineP2pService.instance.startDiscovery().catchError((e) {
       debugPrint('ResponderAlerts P2P discovery auto-start error: $e');
+      return false;
     });
   }
 

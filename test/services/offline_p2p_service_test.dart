@@ -5,7 +5,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nearby_connections/nearby_connections.dart';
 import 'package:vindara/models/emergency.dart';
 import 'package:vindara/services/connectivity_service.dart';
 import 'package:vindara/services/firestore_emergency_service.dart';
@@ -33,6 +32,8 @@ class FakeLocalEmergencyStore extends LocalEmergencyStore {
 class FakeFirestoreEmergencyService extends FirestoreEmergencyService {
   final List<Emergency> upserted = [];
   bool returnSuccess = true;
+
+  FakeFirestoreEmergencyService() : super(firestore: null);
 
   @override
   Future<bool> upsertEmergency(Emergency emergency) async {
@@ -189,8 +190,8 @@ void main() {
     });
 
     test('broadcastHelpEmergency sends bytes payload to connected peers', () async {
-      // Connect a mock peer
-      mockClient.connectedEndpoints.add('peer-endpoint-01');
+      await service.startMesh();
+      mockClient.simulateConnected('peer-endpoint-01');
 
       final emergency = Emergency(
         id: 'EMG-2026-BCAST01',
@@ -233,12 +234,14 @@ void main() {
 
       // First packet received: should be processed and emitted
       await service.handleIncomingBytes('ep-1', bytes);
+      await Future<void>.delayed(Duration.zero);
       expect(fakeStore.savedEmergencies.length, equals(1));
       expect(emittedAlerts.length, equals(1));
       expect(service.seenEmergencyIds.contains('EMG-2026-DEDUP01'), isTrue);
 
       // Duplicate packet received (same emergencyId): must be dropped
       await service.handleIncomingBytes('ep-1', bytes);
+      await Future<void>.delayed(Duration.zero);
       expect(fakeStore.savedEmergencies.length, equals(1)); // Still 1
       expect(emittedAlerts.length, equals(1)); // Still 1
 

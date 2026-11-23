@@ -372,7 +372,7 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4.5),
                 decoration: BoxDecoration(
-                  color: AppColors.orangeLight,
+                  color: AppColors.amberLight,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(

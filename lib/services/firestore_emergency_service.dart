@@ -44,13 +44,23 @@ final class EmergencyNotFoundResult extends ClaimResult {
 
 /// Service managing remote Firestore interactions for emergencies.
 class FirestoreEmergencyService {
-  final FirebaseFirestore _firestore;
+  final FirebaseFirestore? _firestore;
 
   FirestoreEmergencyService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+      : _firestore = firestore ?? _safeFirestore();
+
+  static FirebaseFirestore? _safeFirestore() {
+    try {
+      return FirebaseFirestore.instance;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  FirebaseFirestore get _db => _firestore!;
 
   CollectionReference<Map<String, dynamic>> get _collection =>
-      _firestore.collection('emergencies');
+      _db.collection('emergencies');
 
   // ---------------------------------------------------------------------------
   // Upsert Emergency (Version Guarded)
@@ -63,7 +73,7 @@ class FirestoreEmergencyService {
   Future<bool> upsertEmergency(Emergency emergency) async {
     final docRef = _collection.doc(emergency.id);
 
-    return await _firestore.runTransaction<bool>((transaction) async {
+    return await _db.runTransaction<bool>((transaction) async {
       final snapshot = await transaction.get(docRef);
 
       if (snapshot.exists && snapshot.data() != null) {
@@ -97,7 +107,7 @@ class FirestoreEmergencyService {
   Future<ClaimResult> claimEmergency(String emergencyId, String responderId) async {
     final docRef = _collection.doc(emergencyId);
 
-    return await _firestore.runTransaction<ClaimResult>((transaction) async {
+    return await _db.runTransaction<ClaimResult>((transaction) async {
       final snapshot = await transaction.get(docRef);
 
       if (!snapshot.exists || snapshot.data() == null) {
@@ -151,7 +161,7 @@ class FirestoreEmergencyService {
       String emergencyId, String responderId) async {
     final docRef = _collection.doc(emergencyId);
 
-    return await _firestore.runTransaction<Emergency?>((transaction) async {
+    return await _db.runTransaction<Emergency?>((transaction) async {
       final snapshot = await transaction.get(docRef);
       if (!snapshot.exists || snapshot.data() == null) return null;
 

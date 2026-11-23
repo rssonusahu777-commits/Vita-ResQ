@@ -552,10 +552,11 @@ class OfflineP2pService {
     LocalEmergencyStore? localStore,
     FirestoreEmergencyService? firestoreService,
     ConnectivityService? connectivityService,
-  })  : _client = client ?? DefaultNearbyClient(),
-        _localStore = localStore,
-        _firestoreService = firestoreService,
-        _connectivityService = connectivityService;
+  }) : _client = client ?? DefaultNearbyClient() {
+    _localStore = localStore;
+    _firestoreService = firestoreService;
+    _connectivityService = connectivityService;
+  }
 
   /// Update dependencies dynamically (e.g. once LocalEmergencyStore / Firebase is ready)
   void configureDependencies({
@@ -689,10 +690,10 @@ class OfflineP2pService {
     _seenEmergencyIds.add(emergency.id);
     _activeBroadcasts[emergency.id] = payload;
 
-    _updateStatus(P2pMeshStatus.broadcasting);
-
     // Ensure mesh is active
     await startMesh();
+
+    _updateStatus(P2pMeshStatus.broadcasting);
 
     final bytes = payload.toBytes();
     for (final endpointId in _connectedEndpoints) {

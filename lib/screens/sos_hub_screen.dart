@@ -145,6 +145,7 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
     });
     OfflineP2pService.instance.startDiscovery().catchError((e) {
       debugPrint('SosHub P2P discovery auto-start error: $e');
+      return false;
     });
   }
 
@@ -1064,7 +1065,6 @@ class _SosHubScreenState extends State<SosHubScreen> with TickerProviderStateMix
       case P2pMeshStatus.advertising:
       case P2pMeshStatus.discovering:
       case P2pMeshStatus.idle:
-      default:
         label = 'Offline P2P Mesh Ready';
         color = AppColors.officialBlue;
         icon = Icons.bluetooth_searching_rounded;
