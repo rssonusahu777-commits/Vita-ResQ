@@ -3,12 +3,15 @@
 // Vindara — Profile & Responder Settings Screen (Phase 6)
 // Package: com.vindara.app
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../constants/platform_limitations.dart';
 import '../models/user_profile.dart';
 import '../providers/providers.dart';
+import 'auth_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -280,6 +283,54 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Sign Out Card
+        Card(
+          elevation: 0,
+          color: Colors.red.shade50,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.red.shade200),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: ListTile(
+              leading: Icon(Icons.logout_rounded, color: Colors.red.shade800),
+              title: Text(
+                'Sign Out',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red.shade900,
+                ),
+              ),
+              subtitle: const Text(
+                'Sign out of your Vindara account on this device.',
+              ),
+              trailing: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () async {
+                  if (Firebase.apps.isNotEmpty) {
+                    try {
+                      await FirebaseAuth.instance.signOut();
+                    } catch (_) {}
+                  }
+                  ref.read(offlineEmergencyBypassProvider.notifier).state = false;
+                  final repo = await ref.read(userProfileRepositoryProvider.future);
+                  await repo.clearProfile();
+                  if (context.mounted) {
+                    context.go('/auth');
+                  }
+                },
+                child: const Text('Sign Out'),
+              ),
             ),
           ),
         ),

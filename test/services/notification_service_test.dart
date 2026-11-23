@@ -120,9 +120,9 @@ void main() {
   group('NotificationService — Terminated Cold-Start Detection', () {
     test('init() returns emergencyId when launched from getInitialMessage()',
         () async {
-      final remoteMessage = RemoteMessage(
+      const remoteMessage = RemoteMessage(
         data: {'emergencyId': 'EMG-2026-COLDSTART'},
-        notification: const RemoteNotification(
+        notification: RemoteNotification(
           title: '🚨 HELP NEEDED NEAR YOU',
           body: 'Someone nearby requested assistance.',
         ),

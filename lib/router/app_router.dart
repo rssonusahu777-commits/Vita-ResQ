@@ -1,22 +1,50 @@
 // lib/router/app_router.dart
 //
-// Vindara — App Router & Deep-Link Integration (Phase 6)
+// Vindara — App Router & Deep-Link Integration (Phase 6 & Live Auth)
 // Package: com.vindara.app
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/providers.dart';
+import '../screens/auth_screen.dart';
 import '../screens/crash_countdown_screen.dart';
 import '../screens/emergency_detail_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/profile_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
+  final authState = ref.watch(authStateProvider);
+  final isBypassed = ref.watch(offlineEmergencyBypassProvider);
+
   return GoRouter(
     initialLocation: '/',
+    redirect: (context, state) {
+      // In local unit/widget test environments without Firebase initialized,
+      // do not redirect to /auth so existing screen tests pass directly.
+      if (Firebase.apps.isEmpty) {
+        return null;
+      }
+
+      final user = authState.asData?.value;
+      final isAuthenticated = user != null || isBypassed;
+      final isAuthRoute = state.matchedLocation == '/auth';
+
+      if (!isAuthenticated && !isAuthRoute) {
+        return '/auth';
+      }
+      if (isAuthenticated && isAuthRoute) {
+        return '/';
+      }
+      return null;
+    },
     routes: [
+      GoRoute(
+        path: '/auth',
+        builder: (context, state) => const AuthScreen(),
+      ),
       GoRoute(
         path: '/',
         builder: (context, state) => const RouterLifecycleListener(

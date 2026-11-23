@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'firebase_options.dart';
 import 'router/app_router.dart';
 import 'theme/vindara_theme.dart';
 
@@ -32,7 +33,9 @@ Future<void> main() async {
 Future<void> _initFirebaseSafely() async {
   try {
     if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
     }
   } catch (e) {
     debugPrint('Firebase not initialized or missing configuration: $e');

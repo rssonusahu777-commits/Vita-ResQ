@@ -710,15 +710,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       // Refresh emergencies list provider
       ref.invalidate(allEmergenciesProvider);
 
-      if (mounted) {
-        context.push('/emergency/${emergency.id}');
-      }
+      if (!context.mounted) return;
+      context.push('/emergency/${emergency.id}');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to trigger emergency: $e')),
-        );
-      }
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to trigger emergency: $e')),
+      );
     } finally {
       if (mounted) setState(() => _isTriggering = false);
     }

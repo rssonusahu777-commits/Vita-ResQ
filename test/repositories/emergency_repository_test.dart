@@ -24,7 +24,7 @@ class MockLocationService extends Mock implements LocationService {}
 // Helpers
 // ---------------------------------------------------------------------------
 
-final _fixedFix = LocationFix(
+const _fixedFix = LocationFix(
   latitude: 28.6139,
   longitude: 77.2090,
   accuracyMeters: 10.0,
@@ -120,13 +120,13 @@ void main() {
   // transitionStatus — valid transitions
   // -------------------------------------------------------------------------
   group('transitionStatus — valid transitions', () {
-    Future<Emergency> _created() => repo.createEmergency(
+    Future<Emergency> createTestEmergency() => repo.createEmergency(
           victimId: 'u',
           type: EmergencyType.general,
         );
 
     test('created → alerting succeeds', () async {
-      final e = await _created();
+      final e = await createTestEmergency();
       final result = await repo.transitionStatus(e.id, EmergencyStatus.alerting);
       expect(result, isA<TransitionSuccess>());
       final success = result as TransitionSuccess;
@@ -134,20 +134,20 @@ void main() {
     });
 
     test('created → cancelled succeeds', () async {
-      final e = await _created();
+      final e = await createTestEmergency();
       final result = await repo.transitionStatus(e.id, EmergencyStatus.cancelled);
       expect(result, isA<TransitionSuccess>());
     });
 
     test('alerting → accepted succeeds', () async {
-      final e = await _created();
+      final e = await createTestEmergency();
       await repo.transitionStatus(e.id, EmergencyStatus.alerting);
       final result = await repo.transitionStatus(e.id, EmergencyStatus.accepted);
       expect(result, isA<TransitionSuccess>());
     });
 
     test('accepted → inProgress succeeds', () async {
-      final e = await _created();
+      final e = await createTestEmergency();
       await repo.transitionStatus(e.id, EmergencyStatus.alerting);
       await repo.transitionStatus(e.id, EmergencyStatus.accepted);
       final result = await repo.transitionStatus(e.id, EmergencyStatus.inProgress);
@@ -155,7 +155,7 @@ void main() {
     });
 
     test('inProgress → resolved succeeds', () async {
-      final e = await _created();
+      final e = await createTestEmergency();
       await repo.transitionStatus(e.id, EmergencyStatus.alerting);
       await repo.transitionStatus(e.id, EmergencyStatus.accepted);
       await repo.transitionStatus(e.id, EmergencyStatus.inProgress);
@@ -164,7 +164,7 @@ void main() {
     });
 
     test('accepted → alerting (responder drop) succeeds', () async {
-      final e = await _created();
+      final e = await createTestEmergency();
       await repo.transitionStatus(e.id, EmergencyStatus.alerting);
       await repo.transitionStatus(e.id, EmergencyStatus.accepted);
       final result = await repo.transitionStatus(e.id, EmergencyStatus.alerting);
@@ -172,7 +172,7 @@ void main() {
     });
 
     test('version is incremented on each successful transition', () async {
-      final e = await _created();
+      final e = await createTestEmergency();
       final v1 = e.version;
       final r1 = await repo.transitionStatus(e.id, EmergencyStatus.alerting);
       final v2 = (r1 as TransitionSuccess).emergency.version;

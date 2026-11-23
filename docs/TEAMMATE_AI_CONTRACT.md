@@ -167,3 +167,4 @@ Any PR introducing AI features must provide tests demonstrating:
 1. **Network failure**: Emergency alert succeeds even if the AI backend endpoint is unreachable (offline resilience).
 2. **High latency**: Emergency detail UI displays GPS coordinates instantly while showing a subtle `"Analyzing situation..."` shimmer until AI results land.
 3. **Privacy**: Verification that no base64 images, raw audio buffers, or victim personal identifiers leak into FCM payloads or Firestore public feeds.
+
