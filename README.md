@@ -1,6 +1,6 @@
 # 🚨 Vita ResQ — Autonomous & Civilian Emergency Response Network
 
-[![Flutter Tests](https://img.shields.io/badge/Flutter%20Tests-425%20Passing-brightgreen.svg)](test/)
+[![Flutter Tests](https://img.shields.io/badge/Flutter%20Tests-444%20Passing-brightgreen.svg)](test/)
 [![Backend Tests](https://img.shields.io/badge/Backend%20Tests-84%20Passing-brightgreen.svg)](backend/test/)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-blue.svg)](pubspec.yaml)
 [![License](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
@@ -29,6 +29,14 @@
 - 📊 **Tiger Data & TimescaleDB Analytics**: Local-first telemetry and historical emergency insights dashboard for response time and route analysis.
 - 📖 **Bilingual Helpline Directory**: Integrated emergency helpline directory with instant search, category filtering, and direct dialing.
 - 🚗 **Sensor-Assisted Crash Detection**: Multi-sensor scoring matrix evaluating linear acceleration, angular rotation, velocity drop, and vehicle context with a 15-second cancellable confirmation dialog.
+- 🩺 **AI-Assisted Multimodal Scene & Injury Triage (v1.1 / Phase 5)**:
+  - **Non-Blocking T=0s SOS**: SOS dispatches instantaneously at 0 seconds without delay; triage runs completely asynchronously in the background.
+  - **6-Second Sequential Capture Burst**: Captures 1 rear-camera JPEG + 1 front-camera JPEG sequentially (preventing Android ISP hardware locks) alongside a 6-second microphone `speech_to_text` transcript.
+  - **Hybrid Two-Tier Engine ($0 Architecture)**:
+    - *Online:* Sends compressed frames + transcript to Gemini `gemini-2.5-flash` via lightweight `dart:io` REST (`--dart-define=GEMINI_API_KEY=...`, 8-second timeout) for structured severity (`CRITICAL`, `HIGH`, `MODERATE`, `UNCLEAR`), confidence, and a concise responder briefing.
+    - *Offline / Fallback:* Deterministic local keyword triage on the voice transcript if offline, timed out, or unconfigured—never throws or interrupts SOS.
+  - **Crash Unresponsive Auto-Escalation**: If accelerometer crash detection triggered the SOS (`wasCrashDetected: true`) and camera/audio yield `UNCLEAR`, automatically escalates to `CRITICAL` (`CRASH_ESCALATION`).
+  - **Responder Triage Card & Permissions**: Requests Camera/Mic permissions calmly during onboarding and renders a compact, overflow-safe `TriageAssessmentCard` in both the responder alert list and emergency details view.
 
 ---
 
@@ -74,7 +82,7 @@
 │   ├── screens/                    # UI screens (Home, SOS Map, Details, History, Auth, Analytics)
 │   ├── services/                   # Business logic, P2P networking, OSRM routing, AI assistant
 │   └── widgets/                    # Custom UI widgets (Hold SOS button, OSM Map, AI Sheet)
-├── test/                           # 425 automated Flutter unit, widget, and integration tests
+├── test/                           # 444 automated Flutter unit, widget, and integration tests
 ├── pubspec.yaml                    # Dependencies and asset declarations
 ├── VITA_RESQ_FEATURES.md           # Quick-reference feature notepad (122 features)
 └── VITA_RESQ_MASTER_CHANGELOG.md   # Canonical master project changelog & specification
@@ -118,6 +126,9 @@
 
    # Or target a local physical device with ADB reverse proxying:
    flutter run --dart-define=AI_BACKEND_URL=http://localhost:3000
+
+   # Production release build with optional Gemini API Key for on-device multimodal injury triage:
+   flutter build apk --release --dart-define=GEMINI_API_KEY=YOUR_GEMINI_API_KEY
    ```
 
 ---
@@ -163,12 +174,14 @@ The backend service is located in `backend/` and provides Gemini AI situation br
 
 ## 🧪 Testing & Validation
 
-### Flutter Test Suite (425 Tests)
+### Flutter Test Suite (444 Tests)
 ```bash
 flutter test
 ```
 - **SOS Dispatch Security & Invariants**: UID impersonation prevention, bounded geofencing, GPS stream resilience.
 - **P0-P3 Reliability & Core Experience**: Cache isolation, GPS thresholds, 120s stall timers, SHA-256 P2P payload signing.
+- **Role-Weighted Standby Failover & Community Cloud Relay**: Proximity decay, 5-gate relay validation, guest offline access isolation.
+- **Multimodal AI Injury Triage & Crash Escalation (Phase 5)**: Structured Gemini REST parsing, offline keyword fallback, crash auto-escalation, silent capture failure, and zero-overflow validation on ultra-compact (360x640) viewports.
 - **AI Assistant & Voice UI Widgets**: `AIAssistantSheet`, voice mode toggles, Hindi/English localized disclaimers.
 - **Helpline Directory & Navigation**: Search, filter, direct call intent integration.
 - **Responsive Layouts**: Zero-overflow validation on ultra-compact (360x640) screens.

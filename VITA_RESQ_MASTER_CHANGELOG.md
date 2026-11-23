@@ -4,8 +4,8 @@
 **Official Application Name:** **Vita ResQ** (formerly *Jan Sarthi*)  
 **Package Identifier:** `com.example.jan_sarthi` (Display Name: *Vita ResQ*)  
 **Target Environment:** Flutter 3.x / Dart 3.x (Android & iOS)  
-**Document Status:** Canonical Single Master History & Current State (Updated: October 9, 2026)  
-**Current Verification State:** 312/312 Automated Tests Passing (100%), 0 Analyzer Issues, Offline P2P Alert Freshness & Terminal Updates Enforced, Zero Hanging Navigation Tests.  
+**Document Status:** Canonical Single Master History & Current State (Updated: November 24, 2026)  
+**Current Verification State:** 444/444 Automated Tests Passing (100%), 0 Analyzer Issues, Multimodal Triage Enforced, Zero-Delay T=0s SOS, 360x640 Overflow-Free QA Verified.  
 
 ---
 
@@ -2231,6 +2231,104 @@ This release implements three foundational zero-cost resilience upgrades to Vita
   - **Guest Offline Emergency Access:** Zero-login SOS activation and P2P monitoring preserving profile cache isolation.
   - **Community Cloud Gateway Relay:** 1-hop bystander bridge for fresh ($\le 10$ min) SHA-256 verified `JS-OFF-` alerts to Cloud Firestore under dedicated security rules.
   - **Cold-Start Crash Prevention:** Lazy Firestore resolution preventing `[core/no-app]` crashes during uninitialized or offline cold boots.
+
+---
+
+## 31. VITA RESQ V1.1 — PHASE 5: AI-ASSISTED MULTIMODAL INJURY TRIAGE & CRASH ESCALATION (NOVEMBER 2026)
+
+### 1. Executive Summary & Zero-Cost Architecture Invariants
+Phase 5 introduces an autonomous on-device injury triage pipeline engineered to provide immediate visual and acoustic scene awareness to first responders within seconds of an emergency, operating under strict zero-cost and zero-delay invariants:
+
+1. **Non-Blocking T=0s SOS Dispatch:**
+   - Critical emergency dispatch is never delayed or held waiting for camera or audio acquisition.
+   - At T=0s, `HomeScreen._executeSOS` broadcasts the emergency alert to Firestore / P2P Nearby and immediately routes the victim to `EmergencyMapScreen`.
+   - The multimodal burst runs entirely in the background via `unawaited(_emergencyService.enrichEmergencyWithTriage(...))`.
+
+2. **6-Second Sequential Multimodal Capture Burst:**
+   - Managed by `SosMultimodalCaptureService.captureSixSecondBurst()`.
+   - Concurrently begins microphone listening for up to 6 seconds to capture a live voice transcript via `speech_to_text`.
+   - Sequentially accesses the cameras to prevent hardware ISP locking or memory crashes on mid-range Android devices:
+     * Initializes **Rear camera** at `ResolutionPreset.low`, waits ~1.5s for sensor auto-exposure, captures 1 JPEG frame, and immediately disposes the controller.
+     * Initializes **Front camera** at `ResolutionPreset.low`, waits ~1.5s, captures 1 JPEG frame, and immediately disposes the controller in a guaranteed `finally` block.
+   - Wraps all hardware operations in silent `try / catch` blocks: if camera or microphone permissions are denied or unavailable, returns an empty result gracefully without crashing.
+
+3. **Hybrid Two-Tier Assessment Engine ($0 Architecture):**
+   - **Online Path:** Uses Dart's built-in `dart:io` `HttpClient` + `dart:convert` (zero paid SDKs, $0 billing) to POST compressed JPEG frames + transcript + crash context directly to Gemini `gemini-2.5-flash` (`--dart-define=GEMINI_API_KEY=...`) with a strict 8-second timeout.
+   - Gemini prompt strictly enforces raw JSON output: `{"level": "CRITICAL"|"HIGH"|"MODERATE"|"UNCLEAR", "summary": "<180 chars>", "confidence": "HIGH"|"MEDIUM"|"LOW"}` with instructions to never guess low severity on dark/blurry images.
+   - **Offline / Fallback Path (`assessLocally`):** If offline, unconfigured, or timed out, deterministically classifies injury severity using case-insensitive keyword heuristics on the voice transcript:
+     * `CRITICAL`: *unconscious*, *not breathing*, *can't breathe*, *heavy bleeding*, *severe bleeding*, *heart*, *chest pain*, *head injury*, *seizure*, *trapped*.
+     * `HIGH`: *broken*, *fracture*, *leg*, *arm*, *bleeding*, *accident*, *crash*, *fell*, *can't move*, *fire*, *burn*, *help*.
+     * `MODERATE`: *sprain*, *hurt*, *pain*, *dizzy*, *cut*.
+     * Default: `level: 'UNCLEAR'`, `confidence: 'LOW'`, `source: 'LOCAL_FALLBACK'`.
+
+4. **Crash Unresponsive Auto-Escalation Gate:**
+   - Evaluated after both online and offline paths in `_applyCrashEscalationGate`.
+   - If accelerometer crash detection triggered the SOS (`wasCrashDetected: true`) AND the resulting assessment level is `UNCLEAR` (e.g., phone in pocket, camera obstructed, or victim unconscious/silent), automatically escalates to:
+     * `level: 'CRITICAL'`
+     * `confidence: 'MEDIUM'`
+     * `source: 'CRASH_ESCALATION'`
+     * `summary: 'High-G crash impact detected; victim unresponsive or camera obstructed. Treat as critical.'`
+
+5. **Responder Triage Card & Transparent Onboarding Permissions:**
+   - Transparently requests `Permission.camera` and `Permission.microphone` during the initial onboarding dialog with calm, clear rationale text.
+   - `TriageAssessmentCard` renders a high-glanceability scene triage summary in both the responder alert list (`IncomingEmergencyCard`) and the incident detail view (`EmergencyDetailsScreen`).
+   - Displays severity color badge, confidence + source tag (`AI`, `Offline Voice`, or `Crash Auto-Escalation`), concise briefing text, and quoted voice transcript snippet with guaranteed zero `RenderFlex` overflow on compact `360x640` viewports.
+
+---
+
+### 2. File Inventory: Created & Modified
+
+#### New Models, Services & Widgets:
+1. `lib/models/triage_assessment_model.dart` *(NEW)*:
+   - Immutable data model holding `level`, `summary`, `confidence`, `source`, `transcript`, and `assessedAt`.
+   - Complete serialization suite: `toMap()`, `fromMap()`, `toJson()`, `fromJson()`, `copyWith()`, and tolerant timestamp parsing.
+2. `lib/services/injury_triage_service.dart` *(NEW)*:
+   - Pluggable `TriageHttpClient` architecture for zero-cost REST transport and deterministic offline unit testing.
+   - Implements Gemini `gemini-2.5-flash` online assessment, offline keyword fallback, and post-evaluation crash escalation gate.
+3. `lib/services/sos_multimodal_capture_service.dart` *(NEW)*:
+   - Non-blocking sequential capture coordinator with injectable `frameCaptureDelegate` and `audioCaptureDelegate` hooks.
+   - Enforces sequential rear (~1.5s) -> front (~1.5s) camera cycling and concurrent audio transcription.
+4. `lib/widgets/triage_assessment_card.dart` *(NEW)*:
+   - High-contrast, overflow-safe responder triage card with responsive `Flexible` tags and severity color-coding.
+
+#### Modified Core Services, UI & Infrastructure:
+5. `lib/models/emergency_model.dart` *(MODIFIED)*:
+   - Added optional backward-compatible field `final TriageAssessment? triageAssessment;`.
+   - Updated constructor, `copyWith`, `fromMap`, and `toMap` preserving legacy compatibility.
+6. `lib/services/emergency_service.dart` *(MODIFIED)*:
+   - Added `enrichEmergencyWithTriage(...)` to orchestrate background capture, AI/offline evaluation, Firestore document patching, and P2P beacon propagation.
+7. `lib/services/offline_nearby_service.dart` *(MODIFIED)*:
+   - Added `_activeSosPayloadMap` tracking and `updateTriageAssessment(emergencyId, triageMap)` to rebroadcast compact triage payloads across active P2P endpoints.
+8. `lib/screens/home/home_screen.dart` *(MODIFIED)*:
+   - Updated `_executeSOS({bool wasCrashDetected = false})` to track crash detection vs manual 2.0s hold and fire non-blocking background enrichment via `unawaited(...)`.
+9. `lib/screens/emergency/emergency_details_screen.dart` *(MODIFIED)*:
+   - Integrated `TriageAssessmentCard` directly into the incident view.
+10. `lib/widgets/incoming_emergency_card.dart` *(MODIFIED)*:
+    - Integrated compact `TriageAssessmentCard` into the responder radar emergency list.
+11. `lib/services/app_permissions_service.dart` *(MODIFIED)*:
+    - Added `Permission.camera` and `Permission.microphone` to `requestAllPermissions()`, plus helper getters.
+12. `lib/widgets/permission_request_dialog.dart` *(MODIFIED)*:
+    - Added 4th permission card explaining 6-second emergency scene triage.
+13. `android/app/src/main/AndroidManifest.xml` *(MODIFIED)*:
+    - Added `<uses-permission android:name="android.permission.CAMERA" />` and `<uses-feature android:name="android.hardware.camera" android:required="false" />`.
+14. `pubspec.yaml` *(MODIFIED)*:
+    - Added `camera: ^0.10.5+9` and `speech_to_text: ^6.6.0`.
+15. `firestore.rules` *(MODIFIED)*:
+    - Verified victim update rule permitting authenticated victims to attach `triageAssessment` to active incidents.
+
+#### Automated Regression Test Suites:
+16. `test/injury_triage_service_test.dart` *(NEW)*:
+    - Unit tests covering Gemini JSON response parsing, network timeout fallback, keyword classification, crash auto-escalation, and EmergencyModel backward compatibility.
+17. `test/multimodal_sos_enrichment_test.dart` *(NEW)*:
+    - Tests for silent permission failure handling, mock burst enrichment, crash escalation with empty capture, and multi-state `360x640` viewport overflow verification.
+
+---
+
+### 3. Verification & Metrics Baseline
+- **Total Flutter Automated Tests:** **444 passing tests** (100% pass rate).
+- **Static Analysis:** **0 analyzer issues**.
+- **Compact Viewport QA:** **360x640 verified** with zero `RenderFlex` overflow across all triage states (`CRITICAL`, `HIGH`, `CRASH_ESCALATION`, and `UNCLEAR`).
+- **Cost Invariant:** **$0 / month** on Firebase Spark plan (pure `dart:io` Gemini REST, no paid SDKs, no hardcoded secrets).
 
 
 

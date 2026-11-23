@@ -200,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
         AccidentDetectionDialog.show(
           context: context,
           reasoning: result.reasoning,
-          onConfirmAutoSOS: _executeSOS,
+          onConfirmAutoSOS: () => _executeSOS(wasCrashDetected: true),
           onCancel: () {
             if (mounted) {
               AppSnackbar.showSuccess(context, "Emergency cancelled — you're safe.");
@@ -329,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _executeSOS() async {
+  void _executeSOS({bool wasCrashDetected = false}) async {
     if (_isCreatingSOS) return;
 
     if (mounted) setState(() => _isCreatingSOS = true);
@@ -358,6 +358,14 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       _alertedEmergencyIds.add(emergencyId);
       EmergencySoundService.playSOSSentSound();
+
+      // Non-blocking multimodal scene triage enrichment
+      unawaited(_emergencyService.enrichEmergencyWithTriage(
+        emergencyId: emergencyId,
+        wasCrashDetected: wasCrashDetected,
+        isOnline: !AuthService.isGuestOfflineSessionSync &&
+            _currentMode == CommunicationMode.online,
+      ));
 
       if (!mounted) return;
 
@@ -1420,7 +1428,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   : SOSButton(
                       size: 200,
                       holdDuration: const Duration(milliseconds: 2000),
-                      onSOSActivated: _executeSOS,
+                      onSOSActivated: () => _executeSOS(wasCrashDetected: false),
                     ),
               AppSpacing.gapVerticalMd,
 

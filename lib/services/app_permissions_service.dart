@@ -45,6 +45,14 @@ class AppPermissionsService {
           await Permission.nearbyWifiDevices.request();
         }
       }
+
+      // 4. Camera & Microphone for 6-second Emergency Triage
+      if (!await Permission.camera.isGranted) {
+        await Permission.camera.request();
+      }
+      if (!await Permission.microphone.isGranted) {
+        await Permission.microphone.request();
+      }
     } catch (e) {
       if (kDebugMode) print('[PERMISSIONS ERROR] $e');
     }
@@ -59,6 +67,14 @@ class AppPermissionsService {
 
   Future<bool> isNotificationGranted() async {
     return await Permission.notification.isGranted;
+  }
+
+  Future<bool> isCameraGranted() async {
+    return await Permission.camera.isGranted;
+  }
+
+  Future<bool> isMicrophoneGranted() async {
+    return await Permission.microphone.isGranted;
   }
 
   /// Intent-based SMS requires zero runtime permissions

@@ -38,6 +38,10 @@ dependencies:
   # Utilities & Local Persistence
   shared_preferences: ^2.2.2
 
+  # Multimodal Scene Triage (Phase 5B)
+  camera: ^0.10.5+9
+  speech_to_text: ^6.6.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

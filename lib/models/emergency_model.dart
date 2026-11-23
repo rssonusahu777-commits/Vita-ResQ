@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'responder_model.dart';
+import 'triage_assessment_model.dart';
 
 enum EmergencyStatus {
   SEARCHING,
@@ -28,6 +29,7 @@ class EmergencyModel {
   final Map<String, dynamic>? lastHelperLocation;
   final bool isRelayedOffline;
   final String? relayedByUid;
+  final TriageAssessment? triageAssessment;
 
   EmergencyModel({
     required this.id,
@@ -47,6 +49,7 @@ class EmergencyModel {
     this.lastHelperLocation,
     this.isRelayedOffline = false,
     this.relayedByUid,
+    this.triageAssessment,
   });
 
   bool get isOffline => id.startsWith('JS-OFF-');
@@ -152,6 +155,10 @@ class EmergencyModel {
           : null,
       isRelayedOffline: map['isRelayedOffline'] == true,
       relayedByUid: map['relayedByUid']?.toString(),
+      triageAssessment: map['triageAssessment'] is Map
+          ? TriageAssessment.fromMap(
+              Map<String, dynamic>.from(map['triageAssessment']))
+          : null,
     );
   }
 
@@ -178,6 +185,7 @@ class EmergencyModel {
     Map<String, dynamic>? lastHelperLocation,
     bool? isRelayedOffline,
     String? relayedByUid,
+    TriageAssessment? triageAssessment,
   }) {
     return EmergencyModel(
       id: id ?? this.id,
@@ -197,6 +205,7 @@ class EmergencyModel {
       lastHelperLocation: lastHelperLocation ?? this.lastHelperLocation,
       isRelayedOffline: isRelayedOffline ?? this.isRelayedOffline,
       relayedByUid: relayedByUid ?? this.relayedByUid,
+      triageAssessment: triageAssessment ?? this.triageAssessment,
     );
   }
 
@@ -224,6 +233,7 @@ class EmergencyModel {
       'lastHelperLocation': lastHelperLocation,
       'isRelayedOffline': isRelayedOffline,
       if (relayedByUid != null) 'relayedByUid': relayedByUid,
+      if (triageAssessment != null) 'triageAssessment': triageAssessment!.toMap(),
     };
   }
 

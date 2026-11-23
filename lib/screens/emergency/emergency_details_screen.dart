@@ -20,6 +20,7 @@ import '../../widgets/map_widget.dart';
 import '../../core/navigation/app_navigator.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../widgets/common/app_feedback.dart';
+import '../../widgets/triage_assessment_card.dart';
 
 class EmergencyDetailsScreen extends StatefulWidget {
   final String emergencyId;
@@ -265,6 +266,12 @@ class _EmergencyDetailsScreenState extends State<EmergencyDetailsScreen> {
                       ),
                     ),
                     AppSpacing.gapVerticalLg,
+
+                    // SECTION: SCENE TRIAGE (If available)
+                    if (emergency.triageAssessment != null) ...[
+                      TriageAssessmentCard(triage: emergency.triageAssessment!),
+                      AppSpacing.gapVerticalLg,
+                    ],
 
                     // SECTION: LOCATION
                     Text(

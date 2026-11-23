@@ -172,6 +172,15 @@ class _PermissionRequestDialogState extends State<PermissionRequestDialog> {
                 title: 'Nearby Connectivity',
                 description: 'Needed for offline mutual-aid when mobile networks are unavailable.',
               ),
+              const SizedBox(height: 10),
+
+              // Permission 4: Camera & Microphone
+              _buildPermissionItem(
+                icon: Icons.camera_alt_outlined,
+                iconColor: AppColors.softBlue,
+                title: 'Scene Triage Assessment',
+                description: 'Used strictly for an automated 6-second assessment when SOS is triggered to help responders triage injuries.',
+              ),
               const SizedBox(height: 22),
 
               // Action Buttons

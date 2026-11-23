@@ -70,13 +70,13 @@ service cloud.firestore {
         && request.resource.data.longitude >= -180.0 && request.resource.data.longitude <= 180.0;
 
       // 2. Emergency State Updates:
-      // - Victim can update location, cancel emergency, or update radius
+      // - Victim can update location, cancel emergency, update radius, or attach triageAssessment
       // - Responders can claim emergency (add themselves to responders map)
       // - Responders can update their own location and responder status
       // - Responders can update status (ARRIVED, COMPLETED)
       // - Background expanding radius / notified users updates
       allow update: if request.auth != null && (
-        // Caller is the victim
+        // Caller is the victim (updating active emergency, location, radius, or attaching triageAssessment)
         request.auth.uid == resource.data.victimId ||
         // Caller is an existing responder
         request.auth.uid in resource.data.responders.keys() ||

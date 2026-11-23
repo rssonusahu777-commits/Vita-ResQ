@@ -11,12 +11,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/emergency_model.dart';
 import '../models/responder_model.dart';
 import '../models/user_model.dart';
+import '../models/triage_assessment_model.dart';
 import '../core/constants/app_constants.dart';
 import 'local_database_service.dart';
 import 'offline_nearby_service.dart';
 import 'auth_service.dart';
 import 'analytics_service.dart';
 import 'responder_reliability_monitor.dart';
+import 'sos_multimodal_capture_service.dart';
+import 'injury_triage_service.dart';
 
 class ProblemReportResult {
   final bool success;
@@ -44,6 +47,63 @@ class EmergencyService {
 
   FirebaseFirestore get _firestore => _injectedFirestore ?? FirebaseFirestore.instance;
   FirebaseAuth get _auth => _injectedAuth ?? FirebaseAuth.instance;
+
+  /// Performs non-blocking multimodal triage capture and enriches the emergency
+  /// in Firestore, local SQLite, and active P2P beacon.
+  Future<TriageAssessment?> enrichEmergencyWithTriage({
+    required String emergencyId,
+    required bool wasCrashDetected,
+    bool isOnline = true,
+    SosMultimodalCaptureService? captureService,
+    InjuryTriageService? triageService,
+  }) async {
+    try {
+      final capture = captureService ?? SosMultimodalCaptureService();
+      final triage = triageService ?? InjuryTriageService();
+
+      final result = await capture.captureSixSecondBurst();
+
+      final assessment = await triage.assessEmergency(
+        jpegFrames: result.jpegFrames,
+        transcript: result.transcript,
+        isOnline: isOnline,
+        wasCrashDetected: wasCrashDetected,
+      );
+
+      // 1. Update Firestore if online, authenticated, and not an offline-only emergency
+      final currentUser = _auth.currentUser;
+      if (isOnline && currentUser != null && !emergencyId.startsWith('JS-OFF-')) {
+        try {
+          await _firestore
+              .collection(AppConstants.emergenciesCollection)
+              .doc(emergencyId)
+              .update({
+            'triageAssessment': assessment.toMap(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } catch (_) {}
+      }
+
+      // 2. Update local SQLite database
+      try {
+        final localDb = LocalDatabaseService();
+        final localEm = await localDb.getEmergencyById(emergencyId);
+        if (localEm != null) {
+          final updated = localEm.copyWith(triageAssessment: assessment);
+          await localDb.saveEmergencyLocally(updated);
+        }
+      } catch (_) {}
+
+      // 3. Update P2P beacon payload
+      try {
+        OfflineNearbyService().updateTriageAssessment(emergencyId, assessment.toMap());
+      } catch (_) {}
+
+      return assessment;
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Create new emergency document in Firestore with initial 500m radius stage
   Future<String> createSOS(Position position, {String? victimId}) async {

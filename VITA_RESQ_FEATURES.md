@@ -48,6 +48,20 @@ Vita ResQ is a mission-critical civilian bystander emergency response applicatio
 
 ---
 
+## 4. AI-ASSISTED MULTIMODAL INJURY TRIAGE (V1.1 / PHASE 5)
+
+| Feature | Status | What it does | Where/How it works |
+| :--- | :---: | :--- | :--- |
+| **Non-Blocking T=0s SOS Dispatch** | ✅ IMPLEMENTED | Dispatches SOS instantaneously at 0 seconds without waiting for camera or audio acquisition. | `HomeScreen._executeSOS` broadcasts SOS and immediately navigates to map, then fires unawaited background enrichment. |
+| **6-Second Sequential Multimodal Burst** | ✅ IMPLEMENTED | Captures 1 rear frame (~1.5s) -> disposes -> 1 front frame (~1.5s) -> disposes, with concurrent 6-second speech-to-text audio transcript. | `SosMultimodalCaptureService.captureSixSecondBurst` ensuring sequential camera access to protect mobile ISPs. |
+| **Two-Tier Hybrid Triage Engine ($0)** | ✅ IMPLEMENTED | Evaluates injury severity online via Gemini 2.5 Flash REST (8s timeout, `--dart-define=GEMINI_API_KEY=...`) or offline via local keyword fallback. | `InjuryTriageService.assessEmergency` returning structured `TriageAssessment` (`CRITICAL`, `HIGH`, `MODERATE`, `UNCLEAR`). |
+| **Crash Unresponsive Auto-Escalation** | ✅ IMPLEMENTED | Automatically escalates severity to `CRITICAL` (`CRASH_ESCALATION`) when crash detector triggers SOS and camera/audio yield `UNCLEAR`. | `InjuryTriageService._applyCrashEscalationGate` checking `wasCrashDetected == true && level == 'UNCLEAR'`. |
+| **Triage Onboarding Permissions** | ✅ IMPLEMENTED | Requests Camera and Microphone access during startup/onboarding with calm, transparent scene triage rationale. | `AppPermissionsService.requestAllPermissions` + `PermissionRequestDialog`. |
+| **Responder Triage Card** | ✅ IMPLEMENTED | Displays severity badge, confidence + source tag, briefing summary, and transcript snippet with zero overflow on 360x640 viewports. | `TriageAssessmentCard` integrated into `EmergencyDetailsScreen` and `IncomingEmergencyCard`. |
+| **Firestore & P2P Triage Sync** | ✅ IMPLEMENTED | Attaches triage assessment to Cloud Firestore document (if online) and syncs compact JSON across local SQLite and P2P beacon. | `EmergencyService.enrichEmergencyWithTriage` + `OfflineNearbyService.updateTriageAssessment`. |
+
+---
+
 ## 4. ACCIDENT / CRASH DETECTION
 
 | Feature | Status | What it does | Where/How it works |

@@ -39,6 +39,7 @@ class OfflineNearbyService {
   bool _isAdvertising = false;
   bool _isDiscovering = false;
   int _discoverySubscribers = 0;
+  Map<String, dynamic>? _activeSosPayloadMap;
   final StreamController<Map<String, dynamic>> _sosDiscoveredController =
       StreamController<Map<String, dynamic>>.broadcast();
 
@@ -54,6 +55,20 @@ class OfflineNearbyService {
 
   bool get hasConnectedPeers => _connectedEndpoints.isNotEmpty;
   Set<String> get connectedEndpoints => Set.unmodifiable(_connectedEndpoints);
+
+  /// Update active emergency payload with triage assessment and rebroadcast to connected peers
+  void updateTriageAssessment(String emergencyId, Map<String, dynamic> triageMap) {
+    if (_activeSosPayloadMap != null && _activeSosPayloadMap!['emergencyId'] == emergencyId) {
+      _activeSosPayloadMap!['triageAssessment'] = triageMap;
+      _activeSosPayloadMap = P2PPayloadIntegrity.signPayload(_activeSosPayloadMap!);
+      final bytes = Uint8List.fromList(utf8.encode(jsonEncode(_activeSosPayloadMap!)));
+      for (final endpoint in _connectedEndpoints) {
+        try {
+          Nearby().sendBytesPayload(endpoint, bytes);
+        } catch (_) {}
+      }
+    }
+  }
 
   void addConnectedEndpointForTesting(String endpointId) {
     _connectedEndpoints.add(endpointId);
@@ -145,6 +160,7 @@ class OfflineNearbyService {
     };
 
     payloadMap = P2PPayloadIntegrity.signPayload(payloadMap);
+    _activeSosPayloadMap = payloadMap;
     String payloadJson = jsonEncode(payloadMap);
 
     if (_isAdvertising) {

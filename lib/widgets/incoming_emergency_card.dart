@@ -4,6 +4,7 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/app_typography.dart';
 import '../core/theme/app_shapes.dart';
 import '../core/theme/app_spacing.dart';
+import 'triage_assessment_card.dart';
 
 /// Vita ResQ Incoming Emergency Card — Phase 7 Responder Experience.
 ///
@@ -196,6 +197,15 @@ class IncomingEmergencyCard extends StatelessWidget {
               ),
             ],
           ),
+          // Triage Assessment Card (If enriched)
+          if (emergency.triageAssessment != null) ...[
+            TriageAssessmentCard(
+              triage: emergency.triageAssessment!,
+              isCompact: true,
+            ),
+            const SizedBox(height: 10),
+          ],
+
           AppSpacing.gapVerticalMd,
 
           // Actions: [ View Details ] & [ I CAN HELP ]
