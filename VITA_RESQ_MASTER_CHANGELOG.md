@@ -2103,6 +2103,110 @@ The automated test suite (252/252 passing) and release build verify software com
 - **Session Notification Deduplication:** Repeated discovery bursts or duplicate packets suppressed from triggering multiple alarms during a session.
 - **Safe Active Emergency Navigation:** Home navigation replaces back button during active emergency with confirmation and safe return. Tests teardown cleanly without hanging animation tickers.
 
+---
+
+## 29. ZERO-COST RESILIENCE UPGRADE: ROLE-WEIGHTED FAILOVER, GUEST OFFLINE ACCESS & COMMUNITY CLOUD RELAY (NOVEMBER 2026)
+
+### 1. Executive Summary & Zero-Cost Architecture Invariants
+This release implements three foundational zero-cost resilience upgrades to Vita ResQ, engineered to operate with 100% adherence to Firebase's free Spark plan ($0/month billing, zero Cloud Functions execution, and zero external paid API dependencies):
+
+1. **Role-Weighted Standby Failover (Phase 1):**
+   - Replaces naive standby responder promotion with a deterministic multi-factor priority algorithm (`ResponderReliabilityMonitor.scoreStandbyCandidate`).
+   - Combines medical/operational responder role qualifications with proximity:
+     * **Role weight:** `DOCTOR` = +40.0, `AMBULANCE_DRIVER` = +35.0, `POLICE_PCR` = +30.0, `CITIZEN` (default) = +10.0.
+     * **Proximity weight:** Linear decay from +50.0 at 0 meters to 0.0 at 5,000 meters: `50.0 * (1.0 - (distanceMeters.clamp(0.0, 5000.0) / 5000.0))`.
+     * **Total score:** Role weight + proximity weight.
+   - Standardized deterministic tie-breaking: Sorts candidates by score descending, with deterministic `userId` ascending tie-breaking.
+   - Automatically promotes the highest-priority qualified standby candidate when primary helpers stall for $>120$ seconds or report manual breakdown handovers.
+   - Enforces life-safety terminal guards: never promotes on concluded incidents (`CANCELLED` or `COMPLETED`).
+
+2. **Guest / Logged-Out Offline Emergency Access (Phase 2):**
+   - Eliminates the mandatory login/registration barrier during life-or-death emergencies.
+   - Introduces an isolated guest session (`guest_offline_session_v1` in `SharedPreferences`) accessible directly from `LoginScreen` via a 48dp outlined action: `"Continue Offline (Emergency Access)"`.
+   - Generates a deterministic device-bound guest identity (`offline_guest_<originDeviceId>`) without requiring Firebase Auth.
+   - Strictly confines the application to offline P2P transport, displays a visible `"Guest Offline"` badge on `HomeScreen`, and adapts `AppDrawer` to display `"Guest User"` with a `"Sign In"` action that exits guest mode cleanly.
+   - **Profile Cache Isolation:** Guaranteed zero modification or contamination of `local_user_profile_v2`, preventing cross-user profile hijacking.
+
+3. **Community Cloud Gateway Relay (Phase 3):**
+   - 1-hop bystander P2P-to-Firestore bridge enabling offline victim alerts (`JS-OFF-`) to reach distant online responders.
+   - Operates passively when an authenticated online user has "Responder Mode" active or the Responder Dashboard open: catches nearby BLE/Wi-Fi Direct beacons from offline victims and idempotently bridges them to Cloud Firestore.
+   - Evaluates a strict 5-gate pipeline in `CommunityRelayService.relayOfflineAlertIfEligible`:
+     1. **Integrity check:** Verifies SHA-256 payload signature via `P2PPayloadIntegrity.verifyPayload` (drops tampered packets).
+     2. **Terminal check:** Rejects concluded incidents (`CANCELLED` or `COMPLETED`).
+     3. **10-minute TTL gate:** Rejects stale offline alerts older than 600 seconds (`now - createdAt > 10m`).
+     4. **Online & authenticated check:** Requires active internet, an authenticated non-guest UID, and `JS-OFF-` alert ID.
+     5. **Idempotent Firestore check:** Reads `emergencies/${alert.id}` first. If the document already exists (active or terminal), skips upload without overwriting. Otherwise, creates the emergency document with `isRelayedOffline: true`, `relayedByUid: currentUserUid`, and `status: 'SEARCHING'`.
+
+### 2. Why the System Remains 100% $0 on Firebase Free Spark Plan
+- **Zero Cloud Functions:** Role scoring, SHA-256 signature verification, and TTL checks are computed entirely on-device using pure Dart arithmetic.
+- **Client-Driven Security Enforcement:** Relay uploads are permitted via a tightly scoped second `allow create` rule in `firestore.rules` verifying `request.auth != null`, `isRelayedOffline == true`, `relayedByUid == request.auth.uid`, `status == 'SEARCHING'`, and `createdAt >= request.time - 10m` without backend server triggers or compute charges.
+- **Idempotent Single Writes:** Bystander devices perform a read-before-write check (`documentExists`). If another bystander already bridged the incident or the victim already synced, no duplicate write is performed.
+
+### 3. File Inventory: Modified & Created
+
+#### Core Services & Models:
+1. `lib/services/responder_reliability_monitor.dart` *(MODIFIED)*:
+   - Added pure deterministic helper `scoreStandbyCandidate({required String role, required double distanceMeters})`.
+   - Updated `promoteStandbyToPrimary` to sort eligible standby responders by priority score descending with `userId` ascending tie-breaker.
+2. `lib/models/emergency_model.dart` *(MODIFIED)*:
+   - Added optional backward-compatible fields `final bool isRelayedOffline;` (default `false`) and `final String? relayedByUid;` (default `null`).
+   - Updated constructor, `copyWith`, `fromMap`, `toMap`, `fromJson`, and `toJson`.
+3. `lib/services/auth_service.dart` *(MODIFIED)*:
+   - Added isolated `guest_offline_session_v1` SharedPreferences boolean key.
+   - Added `isGuestOfflineSession()`, `isGuestOfflineSessionSync`, `enterGuestOfflineMode()`, `exitGuestOfflineMode()`, and `resetCacheForTesting()`.
+   - Guaranteed zero contamination of `local_user_profile_v2`.
+4. `lib/services/community_relay_service.dart` *(NEW)*:
+   - Built 5-gate relay pipeline with injectable `IRelayFirestoreWriter`, connectivity, and clock dependencies.
+   - Wrapped Firestore operations in lazy resolution and error boundaries to prevent `[core/no-app]` crashes in uninitialized environments.
+5. `lib/services/offline_communication_service.dart` *(MODIFIED)*:
+   - Added non-blocking community relay execution after local SQLite persistence and local notification.
+   - Added `startPassiveRelayDiscovery` and `stopPassiveRelayDiscovery` with subscriber ref-counting.
+6. `lib/services/communication_manager.dart` *(MODIFIED)*:
+   - Enforced offline mode during guest sessions (`AuthService.isGuestOfflineSessionSync`).
+   - Integrated passive relay discovery during active online responder listening.
+   - Preserved strict mutual exclusion for outbound victim SOS broadcasts.
+
+#### UI & Routing:
+7. `lib/screens/auth/login_screen.dart` *(MODIFIED)*:
+   - Added `"Continue Offline (Emergency Access)"` outlined button (48dp height) with subtitle `"Send or receive nearby Bluetooth/Wi-Fi Direct alerts without signing in."`.
+   - Protected `AppNavigator.navigateToHome(context)` with `context.mounted` check.
+8. `lib/screens/home/home_screen.dart` *(MODIFIED)*:
+   - Added `"Guest Offline"` status pill.
+   - Configured effective user ID resolution (`offline_guest_<deviceId>`) for guest SOS broadcasts and alert listeners.
+9. `lib/widgets/app_drawer.dart` *(MODIFIED)*:
+   - Configured guest header display (`Guest User` / `Offline Emergency Access`).
+   - Rendered `"Sign In"` action that exits guest offline mode and routes to `LoginScreen`.
+
+#### Cloud Infrastructure:
+10. `firestore.rules` *(MODIFIED)*:
+    - Added second `allow create` rule branch for authenticated bystander relay of fresh ($\le 10$ min) `JS-OFF-` alerts with `isRelayedOffline == true` and `relayedByUid == request.auth.uid`.
+
+#### Automated Regression Test Suites:
+11. `test/role_weighted_failover_test.dart` *(NEW)*:
+    - Unit tests for deterministic role scoring, proximity decay, tie-breaking, 120s stall failover, and terminal emergency protection.
+12. `test/guest_offline_access_test.dart` *(NEW)*:
+    - Tests for guest offline mode entry/exit, profile cache isolation, offline transport enforcement, and 360x640 UI layout.
+13. `test/community_cloud_relay_test.dart` *(NEW)*:
+    - Unit tests covering all 5 relay gates, tamper rejection, stale TTL rejection, idempotent skip, and offline/guest refusal.
+
+### 4. Physical Multi-Device Validation Checklist
+1. **Physical Guest Offline Access Verification:**
+   - Launch app on clean installation without signing in.
+   - Tap `"Continue Offline (Emergency Access)"` on `LoginScreen`.
+   - Verify app transitions to `HomeScreen` without layout overflow on compact screen (360x640).
+   - Verify `"Guest Offline"` pill is displayed in the context area.
+   - Open drawer and confirm header shows `"Guest User"` and account button shows `"Sign In"`.
+   - Tap `"Sign In"` and verify app returns to `LoginScreen` and guest state is cleared.
+2. **Three-Phone Community Cloud Gateway Relay Field Test:**
+   - **Phone A (Victim):** Place in Airplane Mode (Cellular & Wi-Fi OFF; Bluetooth and Location ON). Hold SOS for 2.0s to dispatch an offline emergency (`JS-OFF-...`).
+   - **Phone B (Bystander Volunteer):** Online with cellular data or Wi-Fi connected, signed in as an authenticated user, with "Responder Mode" active or Responder Dashboard open. Move within Bluetooth/Wi-Fi Direct range (~10–50m) of Phone A.
+   - **Verification on Phone B:** Verify Phone B passively discovers Phone A's beacon, verifies SHA-256 signature, logs `[VITA-P2P][RELAY_UPLOADED]`, and writes document `emergencies/JS-OFF-...` to Cloud Firestore with `isRelayedOffline: true` and `relayedByUid: Phone_B_UID`.
+   - **Phone C (Online Professional Responder):** Located kilometers away with standard internet connection. Verify Phone C immediately receives the relayed emergency alert via Firestore stream/FCM notification and can view victim location on map.
+3. **Role-Weighted Standby Promotion Test:**
+   - Simulate an emergency with two standby responders: Responder 1 (Citizen, 200m away, Score = 10 + 48 = 58) and Responder 2 (Doctor, 800m away, Score = 40 + 42 = 82).
+   - Trigger primary responder stall or breakdown; verify Doctor (Responder 2) is authoritatively selected for primary promotion over the closer Citizen due to medical qualification weighting.
+
+
 
 
 

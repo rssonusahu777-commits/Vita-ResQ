@@ -19,7 +19,9 @@
   - **Offline**: Google Nearby Connections direct P2P over BLE / Wi-Fi Direct with zero internet dependency.
   - **Application-Layer Integrity**: Pure-Dart FIPS 180-4 SHA-256 payload signing and tamper rejection (`P2PPayloadIntegrity`).
   - **Mutual Exclusion**: Seamless automatic fallback and background sync when network is restored.
-- 👥 **Authoritative Two-Way Claim Handshake**: Multi-tier responder pool supporting `PRIMARY` and `STANDBY` roles with authoritative victim-side arbitration preventing split-brain states.
+  - **Community Cloud Gateway Relay**: 1-hop bystander P2P-to-Firestore bridge for fresh ($\le 10$ min) SHA-256 verified `JS-OFF-` alerts with idempotent non-overwrite protection and dedicated `firestore.rules` enforcement.
+- 👥 **Authoritative Two-Way Claim Handshake & Role-Weighted Failover**: Multi-tier responder pool supporting `PRIMARY` and `STANDBY` roles. Deterministic role + proximity scoring (`DOCTOR` > `AMBULANCE_DRIVER` > `POLICE_PCR` > `CITIZEN`) with linear decay for 120s stall failover and manual breakdown handovers.
+- 📴 **Guest Offline Emergency Access**: Logged-out `"Continue Offline (Emergency Access)"` flow on `LoginScreen` using isolated guest state and persistent `originDeviceId` without touching `local_user_profile_v2`.
 - ⚡ **Dynamic Reliability Watchdog & Auto-Handover**: Continuously monitors responder ETA, progress, and GPS staleness. 120-second stall timer prevents false failovers at traffic lights while detecting genuine responder stalling.
 - 🗺️ **Open-Source Navigation**: Powered by OpenStreetMap and OSRM for live road routing, polylines, and dynamic ETA with direct Haversine fallback and 8-meter movement throttling.
 - 🤖 **AI Assistant & Situation Briefing (Google Gemini 3.8 Flash)**: Context-aware, privacy-sanitized emergency situational guidance with low-latency thinking configuration and multi-language support (English & Hindi).
