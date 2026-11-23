@@ -16,6 +16,7 @@ import 'local_database_service.dart';
 import 'offline_nearby_service.dart';
 import 'auth_service.dart';
 import 'analytics_service.dart';
+import 'responder_reliability_monitor.dart';
 
 class ProblemReportResult {
   final bool success;
@@ -572,25 +573,22 @@ class EmergencyService {
         EmergencyStatus newEmergencyStatus;
 
         if (standbyCandidates.isNotEmpty) {
-          // Sort standby candidates by distance to victim, prioritizing valid & fresh coordinates
+          // Rank standby candidates by role-weighted priority score descending,
+          // with deterministic userId ascending tie-breaking.
           standbyCandidates.sort((a, b) {
-            final aValid = a.hasValidCoordinates;
-            final bValid = b.hasValidCoordinates;
-            if (aValid != bValid) return aValid ? -1 : 1;
+            final double distA = (a.hasValidCoordinates && ResponderModel.isValidCoordinate(existing.latitude, existing.longitude))
+                ? Geolocator.distanceBetween(a.latitude, a.longitude, existing.latitude, existing.longitude)
+                : 5000.0;
+            final double distB = (b.hasValidCoordinates && ResponderModel.isValidCoordinate(existing.latitude, existing.longitude))
+                ? Geolocator.distanceBetween(b.latitude, b.longitude, existing.latitude, existing.longitude)
+                : 5000.0;
 
-            if (aValid && bValid) {
-              final aFresh = a.isLocationFresh();
-              final bFresh = b.isLocationFresh();
-              if (aFresh != bFresh) return aFresh ? -1 : 1;
+            final double scoreA = ResponderReliabilityMonitor.scoreStandbyCandidate(userRole: a.userRole, distanceMeters: distA);
+            final double scoreB = ResponderReliabilityMonitor.scoreStandbyCandidate(userRole: b.userRole, distanceMeters: distB);
 
-              final distA = Geolocator.distanceBetween(a.latitude, a.longitude, existing.latitude, existing.longitude);
-              final distB = Geolocator.distanceBetween(b.latitude, b.longitude, existing.latitude, existing.longitude);
-              final cmp = distA.compareTo(distB);
-              if (cmp != 0) return cmp;
-            }
+            final scoreCmp = scoreB.compareTo(scoreA);
+            if (scoreCmp != 0) return scoreCmp;
 
-            final timeCmp = a.acceptedAt.compareTo(b.acceptedAt);
-            if (timeCmp != 0) return timeCmp;
             return a.userId.compareTo(b.userId);
           });
 
@@ -751,7 +749,8 @@ class EmergencyService {
           };
 
           if (standbyCandidates.isNotEmpty) {
-            // Sort by distance to victim, prioritizing valid & fresh coordinates
+            // Rank standby candidates by role-weighted priority score descending,
+            // with deterministic userId ascending tie-breaking.
             standbyCandidates.sort((a, b) {
               final double latA = (a['latitude'] as num?)?.toDouble() ?? 0.0;
               final double lonA = (a['longitude'] as num?)?.toDouble() ?? 0.0;
@@ -769,26 +768,25 @@ class EmergencyService {
                       !(latB == 0.0 && lonB == 0.0));
               final bool bValid = bAcquired && ResponderModel.isValidCoordinate(latB, lonB);
 
-              if (aValid != bValid) return aValid ? -1 : 1;
+              final double distA = (aValid && ResponderModel.isValidCoordinate(victimLat, victimLon))
+                  ? Geolocator.distanceBetween(latA, lonA, victimLat, victimLon)
+                  : 5000.0;
+              final double distB = (bValid && ResponderModel.isValidCoordinate(victimLat, victimLon))
+                  ? Geolocator.distanceBetween(latB, lonB, victimLat, victimLon)
+                  : 5000.0;
 
-              if (aValid && bValid) {
-                final dateA = ResponderModel.parseDate(a['lastLocationUpdate']);
-                final dateB = ResponderModel.parseDate(b['lastLocationUpdate']);
-                final aFresh = DateTime.now().difference(dateA).inMinutes <= 5;
-                final bFresh = DateTime.now().difference(dateB).inMinutes <= 5;
-                if (aFresh != bFresh) return aFresh ? -1 : 1;
+              final String? roleA = a['userRole'] as String?;
+              final String? roleB = b['userRole'] as String?;
 
-                final distA = Geolocator.distanceBetween(latA, lonA, victimLat, victimLon);
-                final distB = Geolocator.distanceBetween(latB, lonB, victimLat, victimLon);
-                final cmp = distA.compareTo(distB);
-                if (cmp != 0) return cmp;
-              }
+              final double scoreA = ResponderReliabilityMonitor.scoreStandbyCandidate(userRole: roleA, distanceMeters: distA);
+              final double scoreB = ResponderReliabilityMonitor.scoreStandbyCandidate(userRole: roleB, distanceMeters: distB);
 
-              final accA = ResponderModel.parseDate(a['acceptedAt']);
-              final accB = ResponderModel.parseDate(b['acceptedAt']);
-              final timeCmp = accA.compareTo(accB);
-              if (timeCmp != 0) return timeCmp;
-              return (a['userId'] ?? '').toString().compareTo((b['userId'] ?? '').toString());
+              final scoreCmp = scoreB.compareTo(scoreA);
+              if (scoreCmp != 0) return scoreCmp;
+
+              final String idA = (a['userId'] ?? '').toString();
+              final String idB = (b['userId'] ?? '').toString();
+              return idA.compareTo(idB);
             });
 
             var best = standbyCandidates.first;

@@ -27,6 +27,37 @@ class ResponderReliabilityMonitor {
 
   FirebaseFirestore get _db => _firestore ?? FirebaseFirestore.instance;
 
+  /// Computes a priority score for a standby candidate based on role weight and distance:
+  /// - Role weight: DOCTOR = +40.0, AMBULANCE_DRIVER = +35.0, POLICE_PCR = +30.0, CITIZEN/default = +10.0.
+  /// - Proximity weight: linear decay from +50.0 at 0m to 0.0 at 5000m.
+  /// Total score = role weight + proximity weight.
+  static double scoreStandbyCandidate({
+    required String? userRole,
+    required double distanceMeters,
+  }) {
+    final double roleWeight;
+    switch (userRole?.toUpperCase()) {
+      case 'DOCTOR':
+        roleWeight = 40.0;
+        break;
+      case 'AMBULANCE_DRIVER':
+        roleWeight = 35.0;
+        break;
+      case 'POLICE_PCR':
+        roleWeight = 30.0;
+        break;
+      case 'CITIZEN':
+      default:
+        roleWeight = 10.0;
+        break;
+    }
+
+    final double clampedDistance = distanceMeters.clamp(0.0, 5000.0);
+    final double proximityWeight = 50.0 * (1.0 - (clampedDistance / 5000.0));
+
+    return roleWeight + proximityWeight;
+  }
+
   /// Start monitoring reliability for an active emergency session
   void startMonitoring(String emergencyId) {
     _monitoredEmergencyId = emergencyId;
@@ -179,25 +210,24 @@ class ResponderReliabilityMonitor {
           return;
         }
 
-        // Sort standby candidates by distance to victim, prioritizing valid & fresh coordinates
+        // Rank standby candidates by role-weighted priority score descending,
+        // with deterministic userId ascending tie-breaking.
         standbyList.sort((a, b) {
-          final aValid = a.hasValidCoordinates;
-          final bValid = b.hasValidCoordinates;
-          if (aValid != bValid) return aValid ? -1 : 1;
+          final double distA = (a.hasValidCoordinates && ResponderModel.isValidCoordinate(emergency.latitude, emergency.longitude))
+              ? Geolocator.distanceBetween(a.latitude, a.longitude, emergency.latitude, emergency.longitude)
+              : 5000.0;
+          final double distB = (b.hasValidCoordinates && ResponderModel.isValidCoordinate(emergency.latitude, emergency.longitude))
+              ? Geolocator.distanceBetween(b.latitude, b.longitude, emergency.latitude, emergency.longitude)
+              : 5000.0;
 
-          if (aValid && bValid) {
-            final aFresh = a.isLocationFresh();
-            final bFresh = b.isLocationFresh();
-            if (aFresh != bFresh) return aFresh ? -1 : 1;
+          final double scoreA = scoreStandbyCandidate(userRole: a.userRole, distanceMeters: distA);
+          final double scoreB = scoreStandbyCandidate(userRole: b.userRole, distanceMeters: distB);
 
-            final distA = Geolocator.distanceBetween(a.latitude, a.longitude, emergency.latitude, emergency.longitude);
-            final distB = Geolocator.distanceBetween(b.latitude, b.longitude, emergency.latitude, emergency.longitude);
-            final cmp = distA.compareTo(distB);
-            if (cmp != 0) return cmp;
-          }
+          // Higher score wins (descending)
+          final scoreCmp = scoreB.compareTo(scoreA);
+          if (scoreCmp != 0) return scoreCmp;
 
-          final timeCmp = a.acceptedAt.compareTo(b.acceptedAt);
-          if (timeCmp != 0) return timeCmp;
+          // Deterministic tie-breaker: userId ascending
           return a.userId.compareTo(b.userId);
         });
 
