@@ -44,9 +44,39 @@ class UniversalPermissionStatus {
   /// Critical readiness for core emergency dispatch: needs hardware GPS + location permission
   bool get isReadyForEmergency => isLocationGranted && isLocationServiceEnabled;
 
+  /// Whether all applicable permissions and hardware location for this device are granted
+  bool get isFullyGranted {
+    if (!isLocationGranted || !isLocationServiceEnabled) return false;
+    if (sdkInt >= 31 && !isBluetoothGranted) return false;
+    if (sdkInt >= 33 && (!isNearbyWifiGranted || !isNotificationGranted)) return false;
+    return true;
+  }
+
   /// Readiness for offline peer-to-peer mesh broadcasting
   bool get isReadyForP2pMesh =>
       isLocationGranted && isBluetoothGranted && (sdkInt < 33 || isNearbyWifiGranted);
+
+  UniversalPermissionStatus copyWith({
+    bool? isLocationGranted,
+    bool? isLocationServiceEnabled,
+    bool? isBluetoothGranted,
+    bool? isNearbyWifiGranted,
+    bool? isNotificationGranted,
+    bool? isPermanentlyDenied,
+    int? sdkInt,
+    List<String>? missingPermissions,
+  }) {
+    return UniversalPermissionStatus(
+      isLocationGranted: isLocationGranted ?? this.isLocationGranted,
+      isLocationServiceEnabled: isLocationServiceEnabled ?? this.isLocationServiceEnabled,
+      isBluetoothGranted: isBluetoothGranted ?? this.isBluetoothGranted,
+      isNearbyWifiGranted: isNearbyWifiGranted ?? this.isNearbyWifiGranted,
+      isNotificationGranted: isNotificationGranted ?? this.isNotificationGranted,
+      isPermanentlyDenied: isPermanentlyDenied ?? this.isPermanentlyDenied,
+      sdkInt: sdkInt ?? this.sdkInt,
+      missingPermissions: missingPermissions ?? this.missingPermissions,
+    );
+  }
 }
 
 /// Service managing device-adaptive permission negotiation across all Android API levels
@@ -226,3 +256,4 @@ class PermissionService {
     return await Geolocator.openLocationSettings();
   }
 }
+

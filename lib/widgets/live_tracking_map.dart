@@ -160,7 +160,7 @@ class _LiveTrackingMapWidgetState extends State<LiveTrackingMapWidget>
                         points: [victimPos, responderPos],
                         strokeWidth: 4.0,
                         color: AppColors.officialBlue,
-                        pattern: const StrokePattern.dashed(segments: [10, 8]),
+                        pattern: StrokePattern.dashed(segments: const [10, 8]),
                       ),
                     ],
                   ),
@@ -422,3 +422,4 @@ class _LiveTrackingMapWidgetState extends State<LiveTrackingMapWidget>
     );
   }
 }
+
