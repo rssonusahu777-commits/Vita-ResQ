@@ -1,6 +1,6 @@
 // lib/providers/providers.dart
 //
-// Vindara — Riverpod Providers (Phase 4)
+// Vindara — Riverpod Providers (Phase 6)
 // Package: com.vindara.app
 //
 // Design rules followed:
@@ -12,6 +12,7 @@
 //              Single-lifecycle listeners without duplication.
 //   Rule #8 — Offline sync queue auto-drains when online.
 //   Rule #9 — Minimal push payloads without sensitive PII.
+//   Rule #10 — Possible crash detection with 10s countdown.
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -20,6 +21,7 @@ import '../models/user_profile.dart';
 import '../repositories/emergency_repository.dart';
 import '../repositories/user_profile_repository.dart';
 import '../services/connectivity_service.dart';
+import '../services/crash_detection_service.dart';
 import '../services/firestore_emergency_service.dart';
 import '../services/local_emergency_store.dart';
 import '../services/location_service.dart';
@@ -185,8 +187,6 @@ class CurrentUserProfileNotifier extends AsyncNotifier<UserProfile?> {
 // 9. NotificationService & Deep Linking (Phase 4 — Rules #4, #5, #6, #9)
 // ---------------------------------------------------------------------------
 
-/// Manages cold-start pending deep links (e.g. from terminated app state).
-/// Consumed once upon router ready to eliminate navigation race conditions.
 final pendingDeepLinkProvider =
     StateNotifierProvider<PendingDeepLinkNotifier, String?>((ref) {
   return PendingDeepLinkNotifier();
@@ -199,7 +199,6 @@ class PendingDeepLinkNotifier extends StateNotifier<String?> {
     state = target;
   }
 
-  /// Consumes and clears the pending deep-link target so it isn't triggered twice.
   String? consume() {
     final target = state;
     state = null;
@@ -207,7 +206,6 @@ class PendingDeepLinkNotifier extends StateNotifier<String?> {
   }
 }
 
-/// Single-lifecycle NotificationService provider.
 final notificationServiceProvider =
     FutureProvider<NotificationService>((ref) async {
   final service = NotificationService();
@@ -217,18 +215,15 @@ final notificationServiceProvider =
     ref.read(pendingDeepLinkProvider.notifier).setPending('/emergency/$coldStartTarget');
   }
 
-  // Update user profile with device FCM token if available
   final token = service.fcmToken;
   if (token != null && token.isNotEmpty) {
     ref.read(currentUserProfileProvider.notifier).updateFcmToken(token);
   }
 
-  // Rule #6: Clean cancellation of all FCM listeners upon disposal
   ref.onDispose(service.dispose);
   return service;
 });
 
-/// Stream of deep-link route navigation paths emitted when a notification is tapped.
 final deepLinkStreamProvider = StreamProvider<String>((ref) {
   final serviceAsync = ref.watch(notificationServiceProvider);
   return serviceAsync.when(
@@ -238,7 +233,6 @@ final deepLinkStreamProvider = StreamProvider<String>((ref) {
   );
 });
 
-/// Stream of in-app alert banners arriving while the app is in foreground.
 final inAppAlertStreamProvider = StreamProvider<InAppAlertEvent>((ref) {
   final serviceAsync = ref.watch(notificationServiceProvider);
   return serviceAsync.when(
@@ -249,7 +243,47 @@ final inAppAlertStreamProvider = StreamProvider<InAppAlertEvent>((ref) {
 });
 
 // ---------------------------------------------------------------------------
-// 10. Emergency streams (Local & Remote)
+// 10. Crash Detection Service & Toggle (Phase 6 — Rules #6 & #10)
+// ---------------------------------------------------------------------------
+
+/// State provider for enabling / disabling motion crash monitoring.
+final crashMonitoringEnabledProvider =
+    StateNotifierProvider<CrashMonitoringNotifier, bool>((ref) {
+  return CrashMonitoringNotifier();
+});
+
+class CrashMonitoringNotifier extends StateNotifier<bool> {
+  CrashMonitoringNotifier() : super(true); // Enabled by default
+
+  void toggle(bool enabled) {
+    state = enabled;
+  }
+}
+
+/// Single-lifecycle CrashDetectionService (Rule #6).
+final crashDetectionServiceProvider = Provider<CrashDetectionService>((ref) {
+  final service = CrashDetectionService();
+
+  // Watch monitoring state to start / stop sensor subscriptions
+  final isEnabled = ref.watch(crashMonitoringEnabledProvider);
+  if (isEnabled) {
+    service.startMonitoring();
+  } else {
+    service.stopMonitoring();
+  }
+
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+/// Stream of possible crash events.
+final possibleCrashStreamProvider = StreamProvider<PossibleCrashEvent>((ref) {
+  final service = ref.watch(crashDetectionServiceProvider);
+  return service.possibleCrashStream;
+});
+
+// ---------------------------------------------------------------------------
+// 11. Emergency streams (Local & Remote)
 // ---------------------------------------------------------------------------
 
 final emergencyStreamProvider =

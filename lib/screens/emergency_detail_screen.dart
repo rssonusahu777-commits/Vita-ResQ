@@ -15,7 +15,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/emergency.dart';
 import '../providers/providers.dart';
-import '../repositories/emergency_repository.dart';
 import '../theme/vindara_theme.dart';
 
 class EmergencyDetailScreen extends ConsumerStatefulWidget {
@@ -645,3 +644,4 @@ class _EmergencyDetailScreenState extends ConsumerState<EmergencyDetailScreen> {
     }
   }
 }
+

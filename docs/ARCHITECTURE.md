@@ -228,7 +228,7 @@ No victim name, no phone number, no address, no coordinates. Sensitive details r
 | **2** ✅ | Local Hive store, GPS location service, EmergencyRepository, Riverpod providers |
 | **3** ✅ | Vindara rebrand, real reachability probe, Cloud Firestore atomic claims, idempotent sync |
 | **4** ✅ | FCM push notification architecture, deep-linking, privacy-minimal Cloud Function |
-| **5** | Home screen (HELP button), responder dashboard, emergency live map UI |
-| **6** | Crash detection (accelerometer), "Possible Crash" flow with 30s countdown |
-| **7** | Nearby offline relay (BLE / Wi-Fi Direct mesh) |
+| **5** ✅ | Home screen (HELP button), 112 official layer, live Emergency Detail screen |
+| **6** ✅ | Possible crash detection (sensors_plus), 10s countdown, profile & home monitoring controls |
+| **7** | Nearby offline device-to-device relay, responder rewards, hybrid OSM/offline distance card |
 | **8** | Admin portal & responder verification |

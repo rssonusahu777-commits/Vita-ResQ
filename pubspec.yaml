@@ -2,7 +2,7 @@ name: vindara
 description: >
   Vindara — Community Emergency Response Platform.
   Package identity: com.vindara.app.
-version: 0.5.0+1
+version: 0.6.0+1
 publish_to: none
 
 environment:
@@ -45,7 +45,7 @@ dependencies:
   url_launcher: ^6.3.0
 
   # --- Sensor-based crash detection (Phase 6) ---
-  # sensors_plus: ^4.1.1
+  sensors_plus: ^6.1.1
 
 # ---------------------------------------------------------------------------
 # Dev dependencies

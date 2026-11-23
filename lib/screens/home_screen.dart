@@ -55,6 +55,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Widget build(BuildContext context) {
     final isOnlineAsync = ref.watch(isOnlineStreamProvider);
     final isOnline = isOnlineAsync.valueOrNull ?? false;
+    final isCrashMonitoring = ref.watch(crashMonitoringEnabledProvider);
     final userProfile = ref.watch(currentUserProfileProvider).asData?.value;
     final allEmergenciesAsync = ref.watch(allEmergenciesProvider);
 
@@ -134,7 +135,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 // Fast 1-Tap Category Triggers
                 _buildQuickCategoryRow(context),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
+
+                // Possible Crash Detection Status Banner (Rule #10)
+                _buildCrashMonitoringBanner(context, isCrashMonitoring),
+
+                const SizedBox(height: 18),
 
                 // Responder Mode Card
                 _buildResponderCard(context, userProfile, allEmergenciesAsync),
@@ -322,6 +328,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Possible Crash Detection Status Banner (Rule #10)
+  // ---------------------------------------------------------------------------
+  Widget _buildCrashMonitoringBanner(BuildContext context, bool isEnabled) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isEnabled ? Colors.blue.shade50 : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isEnabled ? Colors.blue.shade200 : Colors.grey.shade300,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isEnabled ? Icons.sensors_rounded : Icons.sensors_off_rounded,
+            color: isEnabled ? Colors.blue.shade700 : Colors.grey.shade600,
+            size: 22,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isEnabled
+                      ? 'Possible Crash Guard: Active'
+                      : 'Possible Crash Guard: Paused',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: isEnabled ? Colors.blue.shade900 : Colors.grey.shade800,
+                  ),
+                ),
+                Text(
+                  isEnabled
+                      ? 'Monitors high-G impact patterns'
+                      : 'Tap to enable in Settings',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isEnabled ? Colors.blue.shade700 : Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: () => context.push('/profile'),
+            child: const Text('Configure', style: TextStyle(fontSize: 12)),
+          ),
+        ],
       ),
     );
   }
@@ -664,3 +731,4 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
   }
 }
+

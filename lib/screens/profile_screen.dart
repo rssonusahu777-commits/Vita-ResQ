@@ -1,10 +1,11 @@
 // lib/screens/profile_screen.dart
 //
-// Vindara — Profile & Responder Settings Screen
+// Vindara — Profile & Responder Settings Screen (Phase 6)
 // Package: com.vindara.app
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../constants/platform_limitations.dart';
 import '../models/user_profile.dart';
 import '../providers/providers.dart';
@@ -44,6 +45,8 @@ class ProfileScreen extends ConsumerWidget {
           responseHistoryCount: 7,
           badges: ['first_responder', 'community_guardian'],
         );
+
+    final isCrashMonitoring = ref.watch(crashMonitoringEnabledProvider);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -129,6 +132,49 @@ class ProfileScreen extends ConsumerWidget {
                   .read(currentUserProfileProvider.notifier)
                   .setAvailability(val);
             },
+          ),
+        ),
+
+        // Possible Crash Detection Monitoring Toggle Card (Rule #10)
+        Card(
+          child: Column(
+            children: [
+              SwitchListTile(
+                title: const Text(
+                  'Possible Crash Detection',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: const Text(
+                  'Detects high-impact motion patterns and starts a 10s cancellable countdown.',
+                ),
+                value: isCrashMonitoring,
+                onChanged: (val) {
+                  ref
+                      .read(crashMonitoringEnabledProvider.notifier)
+                      .toggle(val);
+                },
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Test Simulation:',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    TextButton.icon(
+                      icon: const Icon(Icons.play_circle_outline, size: 18),
+                      label: const Text('Test Possible Crash Countdown'),
+                      onPressed: () {
+                        context.push('/crash-countdown');
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
 

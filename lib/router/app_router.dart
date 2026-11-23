@@ -1,15 +1,14 @@
 // lib/router/app_router.dart
 //
-// Vindara — App Router & Deep-Link Integration
+// Vindara — App Router & Deep-Link Integration (Phase 6)
 // Package: com.vindara.app
-//
-// Configures GoRouter and deep-link lifecycle handling (Rules #4, #5, #6).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/providers.dart';
+import '../screens/crash_countdown_screen.dart';
 import '../screens/emergency_detail_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/profile_screen.dart';
@@ -39,12 +38,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           child: ProfileScreen(),
         ),
       ),
+      GoRoute(
+        path: '/crash-countdown',
+        builder: (context, state) => const CrashCountdownScreen(),
+      ),
     ],
   );
 });
 
-/// Root wrapper that consumes pending cold-start deep links and listens
-/// to incoming background/foreground notification events cleanly (Rule #5 & #6).
 class RouterLifecycleListener extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -63,7 +64,6 @@ class _RouterLifecycleListenerState
   @override
   void initState() {
     super.initState();
-    // Cold-start pending deep-link check after frame renders
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final pendingTarget =
           ref.read(pendingDeepLinkProvider.notifier).consume();
@@ -75,7 +75,7 @@ class _RouterLifecycleListenerState
 
   @override
   Widget build(BuildContext context) {
-    // Listen to background notification taps
+    // 1. Listen to background notification taps
     ref.listen<AsyncValue<String>>(deepLinkStreamProvider, (prev, next) {
       next.whenData((targetPath) {
         if (targetPath.isNotEmpty && mounted) {
@@ -84,7 +84,7 @@ class _RouterLifecycleListenerState
       });
     });
 
-    // Listen to foreground heads-up banners
+    // 2. Listen to foreground heads-up banners
     ref.listen<AsyncValue<dynamic>>(inAppAlertStreamProvider, (prev, next) {
       next.whenData((event) {
         if (event != null && mounted) {
@@ -115,6 +115,19 @@ class _RouterLifecycleListenerState
               ),
             ),
           );
+        }
+      });
+    });
+
+    // 3. Listen to Possible Crash detection events (Rule #10)
+    ref.listen<AsyncValue<dynamic>>(possibleCrashStreamProvider, (prev, next) {
+      next.whenData((crashEvent) {
+        if (crashEvent != null && mounted) {
+          // Guard against duplicate pushes if already on countdown
+          final currentPath = GoRouterState.of(context).uri.path;
+          if (currentPath != '/crash-countdown') {
+            context.push('/crash-countdown');
+          }
         }
       });
     });
