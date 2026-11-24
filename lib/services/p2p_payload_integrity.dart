@@ -128,12 +128,34 @@ class AppSha256 {
 class P2PPayloadIntegrity {
   static const String appSecretSalt = 'VITA_RESQ_P2P_INTEGRITY_SALT_V1';
   static const String integrityField = '_integrity';
+  static const String signatureField = 'signature';
   static const String versionField = '_integrityVersion';
   static const int currentVersion = 1;
 
+  /// Recursively converts dates, timestamps, and nested maps/lists into JSON-safe primitives
+  static dynamic makeJsonSafe(dynamic value) {
+    if (value is Map) {
+      return value.map((k, v) => MapEntry(k.toString(), makeJsonSafe(v)));
+    } else if (value is List) {
+      return value.map((v) => makeJsonSafe(v)).toList();
+    } else if (value is DateTime) {
+      return value.toIso8601String();
+    } else if (value != null && value.runtimeType.toString() == 'Timestamp') {
+      try {
+        return (value as dynamic).toDate().toIso8601String();
+      } catch (_) {
+        return value.toString();
+      }
+    }
+    return value;
+  }
+
   /// Generates canonical string representation for hashing across keys
   static String canonicalize(Map<String, dynamic> payload) {
-    final sortedKeys = payload.keys.where((k) => k != integrityField).toList()..sort();
+    final sortedKeys = payload.keys
+        .where((k) => k != integrityField && k != signatureField)
+        .toList()
+      ..sort();
     final buffer = StringBuffer();
     buffer.write(appSecretSalt);
     buffer.write('|');
@@ -143,6 +165,18 @@ class P2PPayloadIntegrity {
       buffer.write('$key=');
       if (val is Map) {
         buffer.write(canonicalize(Map<String, dynamic>.from(val)));
+      } else if (val is List) {
+        buffer.write('[');
+        for (int j = 0; j < val.length; j++) {
+          final item = val[j];
+          if (item is Map) {
+            buffer.write(canonicalize(Map<String, dynamic>.from(item)));
+          } else {
+            buffer.write(item?.toString() ?? 'null');
+          }
+          if (j < val.length - 1) buffer.write(',');
+        }
+        buffer.write(']');
       } else {
         buffer.write(val?.toString() ?? 'null');
       }
@@ -157,11 +191,14 @@ class P2PPayloadIntegrity {
     return AppSha256.hashString(canonical);
   }
 
-  /// Sign payload by injecting _integrity and _integrityVersion
+  /// Sign payload by injecting _integrity and _integrityVersion after JSON-safe normalization
   static Map<String, dynamic> signPayload(Map<String, dynamic> payload) {
-    final copy = Map<String, dynamic>.from(payload);
+    final clean = makeJsonSafe(payload) as Map<String, dynamic>;
+    final copy = Map<String, dynamic>.from(clean);
     copy[versionField] = currentVersion;
-    copy[integrityField] = computeHash(copy);
+    final hash = computeHash(copy);
+    copy[integrityField] = hash;
+    copy[signatureField] = hash;
     return copy;
   }
 
@@ -175,7 +212,8 @@ class P2PPayloadIntegrity {
       return false;
     }
 
-    final String? integrityToken = rawData[integrityField]?.toString();
+    final String? integrityToken =
+        (rawData[integrityField] ?? rawData[signatureField])?.toString();
     if (integrityToken == null || integrityToken.isEmpty) {
       return false;
     }
@@ -185,13 +223,22 @@ class P2PPayloadIntegrity {
       return false;
     }
 
-    final String? emergencyId = rawData['emergencyId']?.toString();
+    final String? emergencyId =
+        (rawData['emergencyId'] ?? rawData['id'])?.toString();
     if (emergencyId == null || emergencyId.isEmpty) {
       return false;
     }
 
-    final dynamic timestamp = rawData['timestamp'];
-    if (timestamp == null || (timestamp is! num) || timestamp <= 0) {
+    final dynamic rawTimestamp = rawData['timestamp'] ?? rawData['createdAt'];
+    num? validTimestamp;
+    if (rawTimestamp is num) {
+      validTimestamp = rawTimestamp;
+    } else if (rawTimestamp is String) {
+      validTimestamp = DateTime.tryParse(rawTimestamp)?.millisecondsSinceEpoch;
+    } else if (rawTimestamp is DateTime) {
+      validTimestamp = rawTimestamp.millisecondsSinceEpoch;
+    }
+    if (validTimestamp == null || validTimestamp <= 0) {
       return false;
     }
 

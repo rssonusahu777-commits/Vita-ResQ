@@ -38,6 +38,9 @@ class AppPermissionsService {
         if (!await Permission.bluetoothScan.isGranted) {
           await Permission.bluetoothScan.request();
         }
+        if (!await Permission.bluetoothAdvertise.isGranted) {
+          await Permission.bluetoothAdvertise.request();
+        }
         if (!await Permission.bluetoothConnect.isGranted) {
           await Permission.bluetoothConnect.request();
         }

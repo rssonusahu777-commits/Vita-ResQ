@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jan_sarthi/models/triage_assessment_model.dart';
 import 'package:jan_sarthi/services/injury_triage_service.dart';
+import 'package:jan_sarthi/services/p2p_payload_integrity.dart';
 import 'package:jan_sarthi/services/sos_multimodal_capture_service.dart';
 import 'package:jan_sarthi/widgets/triage_assessment_card.dart';
 
@@ -173,6 +174,62 @@ void main() {
         expect(find.text(assessment.level), findsNWidgets(2));
         expect(find.text(assessment.summary), findsNWidgets(2));
       }
+    });
+
+    test('e) P2P payload with triageAssessment signs, serializes to JSON bytes, and verifies signature successfully', () {
+      final triage = TriageAssessment(
+        level: 'HIGH',
+        summary: 'Compound fracture detected.',
+        confidence: 'HIGH',
+        source: 'AI_MULTIMODAL',
+        transcript: 'my leg is broken',
+        assessedAt: DateTime.now(),
+      );
+
+      final payloadMap = {
+        'eventType': 'SOS_BROADCAST',
+        'emergencyId': 'EM-999',
+        'id': 'EM-999',
+        'victimId': 'victim-123',
+        'latitude': 28.6139,
+        'longitude': 77.2090,
+        'status': 'SEARCHING',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'createdAt': DateTime.now(),
+        'triageAssessment': triage.toMap(),
+      };
+
+      // Sign payload with safe conversion
+      final signedPayload = P2PPayloadIntegrity.signPayload(payloadMap);
+      expect(signedPayload.containsKey('signature'), isTrue);
+      expect(signedPayload.containsKey('triageAssessment'), isTrue);
+
+      // Serialize to bytes across P2P network
+      final jsonBytes = utf8.encode(jsonEncode(signedPayload));
+
+      // Parse and verify on receiving end
+      final verified = P2PPayloadIntegrity.parseAndVerifyBytes(Uint8List.fromList(jsonBytes));
+      expect(verified, isNotNull);
+      expect(verified!['id'], equals('EM-999'));
+      expect(verified['triageAssessment'], isNotNull);
+      final receivedTriage = TriageAssessment.fromMap(
+        Map<String, dynamic>.from(verified['triageAssessment'] as Map),
+      );
+      expect(receivedTriage.level, equals('HIGH'));
+      expect(receivedTriage.summary, equals('Compound fracture detected.'));
+      expect(receivedTriage.confidence, equals('HIGH'));
+      expect(receivedTriage.source, equals('AI_MULTIMODAL'));
+    });
+
+    test('f) Partial capture resiliency: audio throws but camera succeeds, returns frames without failing', () async {
+      final partialService = SosMultimodalCaptureService(
+        frameCaptureDelegate: () async => [Uint8List.fromList([1, 2, 3])],
+        audioCaptureDelegate: (duration) async => throw Exception('MIC_UNAVAILABLE'),
+      );
+
+      final result = await partialService.captureSixSecondBurst();
+      // Even if mic delegate throws inside custom capture, captureSixSecondBurst handles safely
+      expect(result.jpegFrames.length, equals(1));
     });
   });
 }

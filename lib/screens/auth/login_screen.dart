@@ -344,7 +344,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   color: AppTheme.primaryRed,
                                 ),
                                 label: const Text(
-                                  'Continue Offline (Emergency Access)',
+                                  'Emergency Access (Skip Login)',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -352,7 +352,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                                 onPressed: () async {
-                                  await _authService.enterGuestOfflineMode();
+                                  await _authService.enterEmergencyAccessMode();
                                   if (!context.mounted) return;
                                   AppNavigator.navigateToHome(context);
                                 },
@@ -360,7 +360,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 6),
                             const Text(
-                              'Send or receive nearby Bluetooth/Wi-Fi Direct alerts without signing in.',
+                              'Immediate emergency access (works online & offline for instant SOS dispatch).',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 11,

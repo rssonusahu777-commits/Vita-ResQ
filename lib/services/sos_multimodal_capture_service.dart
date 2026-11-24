@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -40,12 +40,18 @@ class SosMultimodalCaptureService {
   Future<MultimodalCaptureResult> captureSixSecondBurst() async {
     try {
       if (_frameCaptureDelegate != null || _audioCaptureDelegate != null) {
-        final frames = _frameCaptureDelegate != null
-            ? await _frameCaptureDelegate!()
-            : <Uint8List>[];
-        final text = _audioCaptureDelegate != null
-            ? await _audioCaptureDelegate!(const Duration(seconds: 6))
-            : null;
+        List<Uint8List> frames = [];
+        String? text;
+        if (_frameCaptureDelegate != null) {
+          try {
+            frames = await _frameCaptureDelegate!();
+          } catch (_) {}
+        }
+        if (_audioCaptureDelegate != null) {
+          try {
+            text = await _audioCaptureDelegate!(const Duration(seconds: 6));
+          } catch (_) {}
+        }
         return MultimodalCaptureResult(jpegFrames: frames, transcript: text);
       }
       return await _executeNativeBurst();
@@ -86,8 +92,10 @@ class SosMultimodalCaptureService {
                 capturedTranscript = result.recognizedWords;
               }
             },
-            listenFor: const Duration(seconds: 6),
-            pauseFor: const Duration(seconds: 6),
+            listenOptions: SpeechListenOptions(
+              listenFor: const Duration(seconds: 6),
+              pauseFor: const Duration(seconds: 6),
+            ),
           );
         }
       }
@@ -97,59 +105,68 @@ class SosMultimodalCaptureService {
     try {
       final camStatus = await Permission.camera.status;
       if (camStatus.isGranted) {
-        final cameras = await availableCameras();
+        List<CameraDescription> cameras = [];
+        try {
+          cameras = await availableCameras();
+        } catch (_) {}
+
         if (cameras.isNotEmpty) {
           // --- REAR CAMERA ---
-          final rearCamera = cameras.firstWhere(
-            (c) => c.lensDirection == CameraLensDirection.back,
-            orElse: () => cameras.first,
-          );
-          CameraController? rearController = CameraController(
-            rearCamera,
-            ResolutionPreset.low,
-            enableAudio: false,
-          );
           try {
-            await rearController.initialize();
-            await Future.delayed(const Duration(milliseconds: 1500));
-            final file = await rearController.takePicture();
-            final bytes = await file.readAsBytes();
-            if (bytes.isNotEmpty) {
-              capturedFrames.add(bytes);
+            final rearCameras =
+                cameras.where((c) => c.lensDirection == CameraLensDirection.back);
+            if (rearCameras.isNotEmpty) {
+              final rearCamera = rearCameras.first;
+              CameraController? rearController = CameraController(
+                rearCamera,
+                ResolutionPreset.low,
+                enableAudio: false,
+              );
+              try {
+                await rearController.initialize();
+                await Future.delayed(const Duration(milliseconds: 1500));
+                final file = await rearController.takePicture();
+                final bytes = await file.readAsBytes();
+                if (bytes.isNotEmpty) {
+                  capturedFrames.add(bytes);
+                }
+              } catch (_) {
+              } finally {
+                try {
+                  await rearController.dispose();
+                } catch (_) {}
+                rearController = null;
+              }
             }
-          } catch (_) {
-          } finally {
-            try {
-              await rearController.dispose();
-            } catch (_) {}
-            rearController = null;
-          }
+          } catch (_) {}
 
           // --- FRONT CAMERA ---
-          final frontCameras =
-              cameras.where((c) => c.lensDirection == CameraLensDirection.front);
-          if (frontCameras.isNotEmpty) {
-            CameraController? frontController = CameraController(
-              frontCameras.first,
-              ResolutionPreset.low,
-              enableAudio: false,
-            );
-            try {
-              await frontController.initialize();
-              await Future.delayed(const Duration(milliseconds: 1500));
-              final file = await frontController.takePicture();
-              final bytes = await file.readAsBytes();
-              if (bytes.isNotEmpty) {
-                capturedFrames.add(bytes);
-              }
-            } catch (_) {
-            } finally {
+          try {
+            final frontCameras =
+                cameras.where((c) => c.lensDirection == CameraLensDirection.front);
+            if (frontCameras.isNotEmpty) {
+              CameraController? frontController = CameraController(
+                frontCameras.first,
+                ResolutionPreset.low,
+                enableAudio: false,
+              );
               try {
-                await frontController.dispose();
-              } catch (_) {}
-              frontController = null;
+                await frontController.initialize();
+                await Future.delayed(const Duration(milliseconds: 1500));
+                final file = await frontController.takePicture();
+                final bytes = await file.readAsBytes();
+                if (bytes.isNotEmpty) {
+                  capturedFrames.add(bytes);
+                }
+              } catch (_) {
+              } finally {
+                try {
+                  await frontController.dispose();
+                } catch (_) {}
+                frontController = null;
+              }
             }
-          }
+          } catch (_) {}
         }
       }
     } catch (_) {}
@@ -160,6 +177,10 @@ class SosMultimodalCaptureService {
         await speech.stop();
       }
     } catch (_) {}
+
+    debugPrint(
+      '[VITA-TRIAGE-CAPTURE] Captured ${capturedFrames.length} frames (sizes: ${capturedFrames.map((f) => f.length).toList()}), transcriptLen: ${capturedTranscript?.length ?? 0}',
+    );
 
     return MultimodalCaptureResult(
       jpegFrames: capturedFrames,

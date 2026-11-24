@@ -45,18 +45,35 @@ class AuthService {
     _cachedGuestOfflineSession = null;
   }
 
-  /// Enters guest offline emergency access mode:
-  /// - Sets isolated guest session flag.
-  /// - Does NOT modify or contaminate `local_user_profile_v2`.
-  /// - Returns a deterministic guest ID: `offline_guest_<originDeviceId>`.
-  Future<String> enterGuestOfflineMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_guestOfflineKey, true);
+  /// Enters Emergency Access (Skip Login) mode:
+  /// - Attempts anonymous Firebase sign-in (3s timeout) to enable full online Firestore SOS
+  ///   and AI triage sync if network is reachable.
+  /// - If offline, timed out, or Firebase throws, falls back cleanly to local guest session
+  ///   for instant offline P2P SOS with zero delay.
+  Future<String> enterEmergencyAccessMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_guestOfflineKey, true);
+    } catch (_) {}
     _cachedGuestOfflineSession = true;
+
+    try {
+      final userCred = await _auth
+          .signInAnonymously()
+          .timeout(const Duration(seconds: 3));
+      if (userCred.user != null) {
+        return userCred.user!.uid;
+      }
+    } catch (_) {
+      // Offline, timed out, or anonymous auth throws: fall back to local guest ID
+    }
 
     final deviceId = await LocalDatabaseService.getOrCreateLocalDeviceId();
     return 'offline_guest_$deviceId';
   }
+
+  /// Alias for backward compatibility with existing tests and callers
+  Future<String> enterGuestOfflineMode() => enterEmergencyAccessMode();
 
   /// Exits guest offline emergency access mode cleanly.
   Future<void> exitGuestOfflineMode() async {
@@ -65,6 +82,11 @@ class AuthService {
       await prefs.remove(_guestOfflineKey);
     } catch (_) {}
     _cachedGuestOfflineSession = false;
+    if (_auth.currentUser?.isAnonymous == true) {
+      try {
+        await _auth.signOut();
+      } catch (_) {}
+    }
   }
 
   /// Returns the current effective user ID:

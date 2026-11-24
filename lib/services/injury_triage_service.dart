@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import '../models/triage_assessment_model.dart';
 
@@ -61,6 +61,9 @@ class InjuryTriageService {
         (transcript != null && transcript.trim().isNotEmpty);
 
     if (isOnline && _apiKey.isNotEmpty && hasInput) {
+      debugPrint(
+        '[VITA-TRIAGE] apiKeyPresent: ${_apiKey.isNotEmpty}, frames: ${jpegFrames.length}, transcriptLen: ${transcript?.length ?? 0}',
+      );
       try {
         final assessment = await _assessOnline(
           jpegFrames: jpegFrames,
@@ -68,7 +71,10 @@ class InjuryTriageService {
           wasCrashDetected: wasCrashDetected,
         );
         return _applyCrashEscalationGate(assessment, wasCrashDetected);
-      } catch (_) {
+      } catch (e) {
+        debugPrint(
+          '[VITA-TRIAGE] Online triage failed or timed out: $e. Falling back to local assessment.',
+        );
         // Fall through cleanly to local fallback path on any network or parsing error
       }
     }
@@ -134,7 +140,7 @@ Instructions:
       ],
       'generationConfig': {
         'responseMimeType': 'application/json',
-        'temperature': 0.2,
+        'temperature': 0.1,
       }
     };
 
@@ -157,6 +163,15 @@ Instructions:
     }
 
     String rawText = partsList[0]['text']?.toString() ?? '';
+    rawText = rawText.trim();
+    if (rawText.startsWith('```json')) {
+      rawText = rawText.substring(7);
+    } else if (rawText.startsWith('```')) {
+      rawText = rawText.substring(3);
+    }
+    if (rawText.endsWith('```')) {
+      rawText = rawText.substring(0, rawText.length - 3);
+    }
     rawText = rawText
         .replaceAll(RegExp(r'^```json\s*', multiLine: true), '')
         .replaceAll(RegExp(r'^```\s*', multiLine: true), '')
@@ -170,6 +185,10 @@ Instructions:
     if (summary.length > 180) {
       summary = '${summary.substring(0, 177)}...';
     }
+
+    debugPrint(
+      '[VITA-TRIAGE] Gemini HTTP success, statusCode: 200, parsedLevel: $level, confidence: $confidence, source: AI_MULTIMODAL',
+    );
 
     return TriageAssessment(
       level: level,
@@ -251,6 +270,10 @@ Instructions:
       assessedAt: DateTime.now(),
     );
 
+    debugPrint(
+      '[VITA-TRIAGE] Local keyword assessment: level=$level, confidence=$confidence, source=${assessment.source}',
+    );
+
     return _applyCrashEscalationGate(assessment, wasCrashDetected);
   }
 
@@ -261,6 +284,9 @@ Instructions:
     bool wasCrashDetected,
   ) {
     if (wasCrashDetected && assessment.level == 'UNCLEAR') {
+      debugPrint(
+        '[VITA-TRIAGE] Crash escalation applied: source=CRASH_ESCALATION, level=CRITICAL',
+      );
       return assessment.copyWith(
         level: 'CRITICAL',
         confidence: 'MEDIUM',

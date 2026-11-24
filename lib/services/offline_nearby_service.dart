@@ -31,7 +31,8 @@ class OfflineNearbyService {
   factory OfflineNearbyService() => _instance;
   OfflineNearbyService._internal();
 
-  final Strategy strategy = Strategy.P2P_STAR;
+  static const String defaultServiceId = "com.vita_resq.emergency_network";
+  final Strategy strategy = Strategy.P2P_CLUSTER;
   final Map<String, ConnectionInfo> _connectedPeers = {};
   final Set<String> _connectedEndpoints = {};
   Function(Map<String, dynamic>)? onSOSReceivedCallback;
@@ -59,12 +60,13 @@ class OfflineNearbyService {
   /// Update active emergency payload with triage assessment and rebroadcast to connected peers
   void updateTriageAssessment(String emergencyId, Map<String, dynamic> triageMap) {
     if (_activeSosPayloadMap != null && _activeSosPayloadMap!['emergencyId'] == emergencyId) {
-      _activeSosPayloadMap!['triageAssessment'] = triageMap;
+      _activeSosPayloadMap!['triageAssessment'] = P2PPayloadIntegrity.makeJsonSafe(triageMap);
       _activeSosPayloadMap = P2PPayloadIntegrity.signPayload(_activeSosPayloadMap!);
       final bytes = Uint8List.fromList(utf8.encode(jsonEncode(_activeSosPayloadMap!)));
       for (final endpoint in _connectedEndpoints) {
         try {
           Nearby().sendBytesPayload(endpoint, bytes);
+          P2PDiagnostics.log(emergencyId, 'TRIAGE_PAYLOAD_SENT', {'endpointId': endpoint, 'bytes': bytes.length});
         } catch (_) {}
       }
     }
@@ -146,7 +148,10 @@ class OfflineNearbyService {
       P2PDiagnostics.log(emergencyId, 'ADVERTISING_WARNING', {'reason': 'PERMISSIONS_OR_GPS_MISSING'});
     }
 
-    String userName = "JanSarthi_Victim_$victimId";
+    String shortId = emergencyId.length > 20
+        ? emergencyId.substring(emergencyId.length - 12)
+        : emergencyId;
+    String userName = "VITA_SOS|$shortId";
 
     Map<String, dynamic> payloadMap = {
       'eventType': 'SOS_BROADCAST',
@@ -174,6 +179,7 @@ class OfflineNearbyService {
       await Nearby().startAdvertising(
         userName,
         strategy,
+        serviceId: defaultServiceId,
         onConnectionInitiated: (String id, ConnectionInfo info) async {
           _connectedPeers[id] = info;
           _connectedEndpoints.add(id);
@@ -211,11 +217,12 @@ class OfflineNearbyService {
           if (status == Status.CONNECTED) {
             _connectedEndpoints.add(id);
             try {
-              await Nearby().sendBytesPayload(
-                id,
-                Uint8List.fromList(utf8.encode(payloadJson)),
-              );
-              P2PDiagnostics.log(emergencyId, 'PAYLOAD_SENT', {'bytes': payloadJson.length, 'endpointId': id});
+              final payloadToSend = _activeSosPayloadMap != null
+                  ? jsonEncode(_activeSosPayloadMap!)
+                  : payloadJson;
+              final payloadBytes = Uint8List.fromList(utf8.encode(payloadToSend));
+              await Nearby().sendBytesPayload(id, payloadBytes);
+              P2PDiagnostics.log(emergencyId, 'PAYLOAD_SENT', {'bytes': payloadBytes.length, 'endpointId': id});
             } catch (e) {
               P2PDiagnostics.log(emergencyId, 'PAYLOAD_SEND_ERROR', {'endpointId': id, 'error': e.toString()});
             }
@@ -260,14 +267,20 @@ class OfflineNearbyService {
       P2PDiagnostics.log('NONE', 'DISCOVERY_WARNING', {'reason': 'PERMISSIONS_OR_GPS_MISSING'});
     }
 
+    final shortUid = currentUserId.length > 16
+        ? currentUserId.substring(0, 16)
+        : currentUserId;
+    final helperUserName = "VITA_HLP|$shortUid";
+
     try {
       await Nearby().startDiscovery(
-        "JanSarthi_Helper_$currentUserId",
+        helperUserName,
         strategy,
+        serviceId: defaultServiceId,
         onEndpointFound: (String id, String userName, String serviceId) async {
           P2PDiagnostics.log('NONE', 'ENDPOINT_FOUND', {'endpointId': id, 'serviceId': serviceId});
           await Nearby().requestConnection(
-            "JanSarthi_Helper_$currentUserId",
+            helperUserName,
             id,
             onConnectionInitiated: (String endpointId, ConnectionInfo info) async {
               _connectedEndpoints.add(endpointId);

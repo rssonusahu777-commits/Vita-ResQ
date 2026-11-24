@@ -6,6 +6,7 @@ import 'local_database_service.dart';
 import 'notification_service.dart';
 import 'p2p_diagnostics.dart';
 import '../models/emergency_model.dart';
+import '../models/triage_assessment_model.dart';
 import 'analytics_service.dart';
 import 'community_relay_service.dart';
 
@@ -198,17 +199,32 @@ class OfflineCommunicationService implements ICommunicationService {
             return;
           }
 
-          EmergencyModel emergency = EmergencyModel(
-            id: id,
-            victimId: victimId,
-            originDeviceId: originDeviceId,
-            type: data['type'] ?? 'MEDICAL',
-            latitude: (data['latitude'] as num).toDouble(),
-            longitude: (data['longitude'] as num).toDouble(),
-            status: EmergencyStatus.SEARCHING,
-            createdAt: DateTime.fromMillisecondsSinceEpoch((rawTimestamp as num).toInt()),
-            updatedAt: DateTime.now(),
-          );
+          TriageAssessment? triageAssessment;
+          if (data['triageAssessment'] is Map) {
+            try {
+              triageAssessment = TriageAssessment.fromMap(
+                Map<String, dynamic>.from(data['triageAssessment']),
+              );
+            } catch (_) {}
+          }
+
+          EmergencyModel emergency = existingLocal != null
+              ? existingLocal.copyWith(
+                  triageAssessment: triageAssessment ?? existingLocal.triageAssessment,
+                  updatedAt: DateTime.now(),
+                )
+              : EmergencyModel(
+                  id: id,
+                  victimId: victimId,
+                  originDeviceId: originDeviceId,
+                  type: data['type'] ?? 'MEDICAL',
+                  latitude: (data['latitude'] as num).toDouble(),
+                  longitude: (data['longitude'] as num).toDouble(),
+                  status: EmergencyStatus.SEARCHING,
+                  createdAt: DateTime.fromMillisecondsSinceEpoch((rawTimestamp as num).toInt()),
+                  updatedAt: DateTime.now(),
+                  triageAssessment: triageAssessment,
+                );
 
           alertMap[id] = emergency;
           await _localDb.saveEmergencyLocally(emergency);

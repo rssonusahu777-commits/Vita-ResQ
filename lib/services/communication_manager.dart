@@ -29,19 +29,27 @@ class CommunicationManager {
   StreamSubscription<CommunicationMode>? _modeSub;
   bool _isTransitioning = false;
 
+  bool get _shouldForceOffline {
+    if (!AuthService.isGuestOfflineSessionSync) return false;
+    try {
+      return FirebaseAuth.instance.currentUser == null;
+    } catch (_) {
+      return true;
+    }
+  }
+
   CommunicationMode get activeMode =>
-      AuthService.isGuestOfflineSessionSync ? CommunicationMode.offline : _activeMode;
+      _shouldForceOffline ? CommunicationMode.offline : _activeMode;
   Stream<CommunicationMode> get modeStream => _connectivityService.modeStream;
 
   void initialize() {
     _connectivityService.initialize();
-    final bool isGuest = AuthService.isGuestOfflineSessionSync;
-    _activeMode = isGuest ? CommunicationMode.offline : _connectivityService.currentMode;
+    _activeMode = _shouldForceOffline ? CommunicationMode.offline : _connectivityService.currentMode;
     _updateActiveService(_activeMode);
 
     _modeSub?.cancel();
     _modeSub = _connectivityService.modeStream.listen((newMode) {
-      if (AuthService.isGuestOfflineSessionSync) {
+      if (_shouldForceOffline) {
         if (_activeMode != CommunicationMode.offline) {
           _updateActiveService(CommunicationMode.offline);
         }
@@ -64,7 +72,7 @@ class CommunicationManager {
 
   Future<void> _handleModeTransition(
       CommunicationMode oldMode, CommunicationMode newMode) async {
-    if (AuthService.isGuestOfflineSessionSync) {
+    if (_shouldForceOffline) {
       _updateActiveService(CommunicationMode.offline);
       return;
     }
@@ -96,7 +104,7 @@ class CommunicationManager {
     required Position position,
     required String currentUserId,
   }) async {
-    if (AuthService.isGuestOfflineSessionSync) {
+    if (_shouldForceOffline) {
       _updateActiveService(CommunicationMode.offline);
       return await _offlineService.broadcastSOS(
         position: position,
@@ -112,7 +120,7 @@ class CommunicationManager {
     required double userLon,
     required String currentUserId,
   }) {
-    if (AuthService.isGuestOfflineSessionSync) {
+    if (_shouldForceOffline) {
       _updateActiveService(CommunicationMode.offline);
       return _offlineService.listenForAlerts(
         userLat: userLat,
@@ -185,8 +193,8 @@ class CommunicationManager {
 
   /// Safely upload unsynchronized offline emergency records to Firestore
   Future<void> syncOfflineEmergencyToFirestore() async {
-    // In guest offline mode, strictly skip Firestore sync
-    if (AuthService.isGuestOfflineSessionSync) {
+    // In unauthenticated guest offline mode, strictly skip Firestore sync
+    if (_shouldForceOffline) {
       return;
     }
     List<EmergencyModel> unsynced = await _localDb.getUnsyncedEmergencies();

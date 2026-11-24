@@ -40,7 +40,7 @@ dependencies:
 
   # Multimodal Scene Triage (Phase 5B)
   camera: ^0.10.5+9
-  speech_to_text: ^6.6.0
+  speech_to_text: ^7.0.0
 
 dev_dependencies:
   flutter_test:
@@ -61,3 +61,6 @@ flutter:
   assets:
     - assets/icon/
     - assets/audio/
+
+dependency_overrides:
+  web: ^1.0.0

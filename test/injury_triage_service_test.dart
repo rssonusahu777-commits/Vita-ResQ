@@ -211,6 +211,45 @@ void main() {
       expect(deserializedWithTriage.triageAssessment!.source, equals('AI_MULTIMODAL'));
       expect(deserializedWithTriage.triageAssessment!.transcript, equals('help I cannot move my head'));
     });
+
+    test('f) Defensive markdown code fence stripping handles ```json ... ``` blocks from Gemini', () async {
+      final mockMarkdownResponse = jsonEncode({
+        'candidates': [
+          {
+            'content': {
+              'parts': [
+                {
+                  'text': '```json\n{\n  "level": "CRITICAL",\n  "summary": "Arterial bleeding detected.",\n  "confidence": "HIGH"\n}\n```',
+                }
+              ]
+            }
+          }
+        ]
+      });
+
+      final mockClient = MockTriageHttpClient((uri, body) async {
+        // Assert generationConfig parameters
+        expect(body['generationConfig']['responseMimeType'], equals('application/json'));
+        expect(body['generationConfig']['temperature'], equals(0.1));
+        return mockMarkdownResponse;
+      });
+
+      final service = InjuryTriageService(
+        httpClient: mockClient,
+        apiKey: 'test-api-key',
+      );
+
+      final assessment = await service.assessEmergency(
+        jpegFrames: [Uint8List.fromList([1, 2, 3])],
+        transcript: 'Bleeding heavily',
+        isOnline: true,
+      );
+
+      expect(assessment.level, equals('CRITICAL'));
+      expect(assessment.summary, equals('Arterial bleeding detected.'));
+      expect(assessment.confidence, equals('HIGH'));
+      expect(assessment.source, equals('AI_MULTIMODAL'));
+    });
   });
 }
 
